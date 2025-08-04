@@ -1,13 +1,13 @@
 import dynamic from 'next/dynamic';
 import React, { HTMLAttributes } from 'react';
 
-const Info = dynamic(() => import("./Info.js"), { ssr: false });
-const Warning = dynamic(() => import("./Warning.js"), { ssr: false });
-const Code = dynamic(() => import("./CodeBlock.js"), { ssr: false });
-const Blockquote = dynamic(() => import("./Blockquote.js"), { ssr: false });
+const Info = dynamic(() => import("./Info"), { ssr: false });
+const Warning = dynamic(() => import("./Warning"), { ssr: false });
+const Code = dynamic(() => import("./Code"), { ssr: false });
+const Blockquote = dynamic(() => import("./Blockquote"), { ssr: false });
 const Image = dynamic(() => import("next/image"), { ssr: false });
-const Link = dynamic(() => import("./Link.js"), { ssr: false });
-const Formula = dynamic(() => import("./Formula.js"), { ssr: false });
+const Link = dynamic(() => import("./Link"), { ssr: false });
+const Formula = dynamic(() => import("./Formula"), { ssr: false });
 
 interface HeadingProps extends HTMLAttributes<HTMLHeadingElement> {}
 interface ParagraphProps extends HTMLAttributes<HTMLParagraphElement> {}
@@ -57,5 +57,5 @@ export const components = {
     blockquote: Blockquote,
     Info,
     Warning,
-    Formula: (props: React.ComponentProps<typeof Formula>) => <Formula {...props} />,
+    Formula,
 }

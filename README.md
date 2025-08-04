@@ -1,2 +1,26 @@
 # MDXTheme
 Custom MDX theme for my docs/websites
+
+## Package Contents
+
+- Simple CLI to build static sites from only MDX files
+- Custom MDX theme with Tailwind CSS and custom MDX components:
+  - Custom Code Block with syntax highlighting, filename annotation, file source url, line numbers, and more
+      - Format:
+  
+<pre>
+```language:filename:url
+// Your code here
+```
+</pre>
+
+- Custom "Info" and "Warning" components
+- Custom "Formula" component for displaying mathematical formulas using KaTeX
+- Custom "Link" component for external links and next/link integration
+- Custom "Image" component for responsive images with lazy loading
+- Custom "Heading" component for consistent heading styles
+- Proper spacing system for consistent layout
+- Tailwind CSS and tailwind typography for beautiful text rendering
+
+
+

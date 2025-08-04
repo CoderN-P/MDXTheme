@@ -1,1 +1,1 @@
-export { components } from "./components/mdxComponents.js";
+export { components } from "../template/components/mdxComponents";

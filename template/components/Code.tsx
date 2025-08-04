@@ -1,7 +1,8 @@
 // components/mdx/Code.tsx
 import type { HTMLAttributes } from "react";
 
-import CodeBlock from "./CodeBlock.js";
+import CodeBlock from "./CodeBlock/CodeBlockServer";
+import {highlightCode} from "./CodeBlock/highlight";
 
 type Props = HTMLAttributes<HTMLElement> 
 
@@ -11,7 +12,14 @@ const extToIcon: Record<string, string> = {
     "py": "/tech-icons/python.svg",
     "java": "/tech-icons/java.svg",
     "cpp": "/tech-icons/c-plusplus.svg",
-    "ino": "/tech-icons/c-plusplus.svg",
+    "ino": "/tech-icons/arduino.svg",
+    "c": "/tech-icons/c.svg",
+    "tsx": "/tech-icons/react.svg",
+    "jsx": "/tech-icons/react.svg",
+    "html": "/tech-icons/html.svg",
+    "css": "/tech-icons/css.svg",
+    "json": "/tech-icons/json.svg",
+    "svelte": "/tech-icons/svelte.svg",
 }
     
 
@@ -35,10 +43,11 @@ export default function Code({ children, className }: Props) {
             )
         }
         
+        const highlightedHtml = highlightCode(rawCode, language);
         
         
         // Use CodeBlock component with client-side hydration
-        return <CodeBlock lines language={language} value={rawCode} fileName={fileName} icon={iconSrc} url={url} />;
+        return <CodeBlock highlightedHtml={highlightedHtml} showLines={true}language={language} value={rawCode} fileName={fileName} icon={iconSrc} url={url} />;
     }
     
 
