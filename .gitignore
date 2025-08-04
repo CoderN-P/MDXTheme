@@ -1,0 +1,7 @@
+test/
+.mdx-build/
+.next/
+dist/
+**/node_modules/
+.idea/
+**/next/
