@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repo
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
       - name: Set up Node.js
@@ -22,21 +22,35 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install CLI Tool (mdxtheme)
-        run: |
-          npm install -g mdxtheme
-          # Sanity check: log available binaries and contents
-          which mdxtheme
-          ls -R $(npm root -g)/mdxtheme
+      - name: Install mdxTheme CLI Globally
+        run: npm install -g mdxtheme
 
-      - name: Build Static Site
+      - name: Locate Template Path
+        id: find_template
+        run: |
+          TEMPLATE_PATH="$(npm root -g)/mdxtheme/template"
+          echo "Template path is $TEMPLATE_PATH"
+          echo "template_path=$TEMPLATE_PATH" >> $GITHUB_OUTPUT
+
+      - name: Install Dependencies in Template
+        run: |
+          cd "${{ steps.find_template.outputs.template_path }}"
+          npm install
+        # Optional: uncomment to debug
+        # continue-on-error: true
+
+      - name: Build Static Site with mdxTheme
         run: |
           mdxtheme --input docs --repoName ${{ github.event.repository.name }}
-        env:
-          NODE_OPTIONS: --no-warnings
 
-      - name: Check if out/ directory exists
-        run: test -d docs/out && echo "Build successful." || (echo "docs/out missing" && exit 1)
+      - name: Verify Output Directory Exists
+        run: |
+          if [ -d "docs/out" ]; then
+            echo "✅ Static site generated successfully."
+          else
+            echo "❌ Static export failed. Directory docs/out not found."
+            exit 1
+          fi
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
