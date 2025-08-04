@@ -31,7 +31,7 @@
   "bugs": {
     "url": "https://github.com/CoderN-P/MDXTheme/issues"
   },
-  "homepage": "https://github.com/CoderN-P/MDXTheme#readme",
+  "homepage": "https://docs.neelparpia.me/mdxtheme",
   "peerDependencies": {
     "@mdx-js/react": "^3.1.0",
     "highlight.js": "^11.11.1",
