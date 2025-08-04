@@ -26,7 +26,7 @@ interface CustomOlProps extends ListProps {}
 interface CustomUlProps extends ListProps {}
 
 export const components = {
-    h1: (props: CustomH1Props) => <h1 className="prose text-4xl font-bold font-inter" {...props} />,
+    h1: (props: CustomH1Props) => <h1 className="prose text-4xl text-black font-bold font-inter" {...props} />,
     h2: (props: CustomH2Props) => <h2 className="prose text-black text-3xl font-semibold font-inter" {...props} />,
     h3: (props: CustomH3Props) => <h3 className="prose text-black text-2xl font-semibold font-inter" {...props} />,
     h4: (props: CustomH4Props) => <h4 className="prose text-black text-xl font-semibold font-inter" {...props} />,

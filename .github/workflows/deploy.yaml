@@ -1,0 +1,36 @@
+# .github/workflows/deploy.yml
+name: Deploy Docs to GitHub Pages
+
+on:
+  push:
+    branches: [main] # or docs, or whatever branch you want
+    paths:
+      - "**.mdx"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install CLI tool
+        run: npm install -g mdxtheme # or use npx directly
+
+      - name: Build Static Site
+        run: npx mdxtheme --input docs --repoName ${{ github.event.repository.name }}
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/out
+          publish_branch: gh-pages
