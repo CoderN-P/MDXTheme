@@ -1,20 +1,16 @@
 'use client';
 
-import { Check, Copy } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Copy } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export default function CodeBlockClient({
   code,
-  showLines,
-  onToggleLines,
   editorRef,
   linesRef,
 }: {
   code: string;
-  showLines: boolean;
-  onToggleLines: () => void;
-  editorRef: React.RefObject<HTMLPreElement>;
-  linesRef: React.RefObject<HTMLDivElement>;
+  editorRef: React.RefObject<HTMLPreElement | null>;
+  linesRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -40,7 +36,7 @@ export default function CodeBlockClient({
 
     codeEl.addEventListener("scroll", handleScroll);
     return () => codeEl.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [editorRef, linesRef]);
 
   return (
     <div className="flex flex-col gap-2">

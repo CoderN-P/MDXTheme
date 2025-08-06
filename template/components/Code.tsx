@@ -52,7 +52,7 @@ export default function Code({ children, className }: Props) {
     
 
     return (
-        <code className="bg-gray-100 p-1 font-normal text-black text-sm rounded-md" >
+        <code className="bg-gray-100 p-1 font-medium text-black text-sm rounded-md" >
             {rawCode}
         </code>
     );

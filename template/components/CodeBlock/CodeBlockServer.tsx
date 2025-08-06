@@ -47,8 +47,6 @@ url?: string;
           <p className="text-xs uppercase text-gray-700 mt-0">{language}</p>
           <CodeBlockClient
             code={value}
-            showLines={showLines}
-            onToggleLines={() => {} /* Will be replaced in MDX */}
             editorRef={editorRef}
             linesRef={linesRef}
           />

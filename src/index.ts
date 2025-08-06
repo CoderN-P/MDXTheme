@@ -1,1 +1,0 @@
-export { components } from "../template/components/mdxComponents";

@@ -1,6 +1,6 @@
 {
   "name": "mdxtheme",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Custom MDX theme for gh pages",
   "main": "dist/index.js",
   "scripts": {
@@ -49,10 +49,5 @@
     "@types/react-katex": "^3.0.4",
     "next": "^15.4.5",
     "typescript": "^5.9.2"
-  },
-  "dependencies": {
-    "@tailwindcss/postcss": "^4.1.11",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.11"
   }
 }
