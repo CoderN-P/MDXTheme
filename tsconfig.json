@@ -1,18 +1,23 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "moduleResolution": "bundler",
-    "module": "esnext",
-    "lib": ["DOM", "ES2020"],
-    "jsx": "react-jsx",
-    "declaration": true,
-    "declarationDir": "./dist",
+    "module": "ESNext",
+    "moduleResolution": "node",
     "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
-    "strict": true
+    "strict": true,
+    "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*", "template/types.d.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "template"
+  ]
 }

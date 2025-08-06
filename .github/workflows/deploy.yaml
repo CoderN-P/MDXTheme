@@ -25,23 +25,9 @@ jobs:
       - name: Install mdxTheme CLI Globally
         run: npm install -g mdxtheme
 
-      - name: Locate Template Path
-        id: find_template
-        run: |
-          TEMPLATE_PATH="$(npm root -g)/mdxtheme/template"
-          echo "Template path is $TEMPLATE_PATH"
-          echo "template_path=$TEMPLATE_PATH" >> $GITHUB_OUTPUT
-
-      - name: Install Dependencies in Template
-        run: |
-          cd "${{ steps.find_template.outputs.template_path }}"
-          npm install
-        # Optional: uncomment to debug
-        # continue-on-error: true
-
       - name: Build Static Site with mdxTheme
         run: |
-          mdxtheme --input docs --repoName ${{ github.event.repository.name }}
+          npx mdxtheme --input docs --repoName ${{ github.event.repository.name }}
 
       - name: Verify Output Directory Exists
         run: |
