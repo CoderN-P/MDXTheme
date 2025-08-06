@@ -1,38 +1,35 @@
 name: Deploy Docs to GitHub Pages
-
 on:
   push:
     branches: [main]
     paths:
       - "**.mdx"
-
 permissions:
   contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install mdxTheme CLI Globally
         run: npm install -g mdxtheme
 
       - name: Build Static Site with mdxTheme
         run: |
-          npx mdxtheme --input docs --repoName ${{ github.event.repository.name }}
+          mdxtheme --input docs --output docs/out --repoName ${{ github.event.repository.name }}
 
       - name: Verify Output Directory Exists
         run: |
           if [ -d "docs/out" ]; then
             echo "✅ Static site generated successfully."
+            ls -la docs/out
           else
             echo "❌ Static export failed. Directory docs/out not found."
             exit 1
