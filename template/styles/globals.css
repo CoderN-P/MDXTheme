@@ -2,9 +2,26 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+:root {
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 /* Base font family */
-* {
+body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, and Opera */
+}
+
+
+.editor,
+.font-mono {
+  font-family: var(--font-mono) !important;
 }
 
 /* Layout container */
@@ -13,7 +30,6 @@
   margin: 0 auto;
   padding: 2rem 1rem;
 }
-
 
 
 .prose code::before {
@@ -29,6 +45,7 @@ ul li::marker {
 ul {
     margin-left: 24px !important;
 }
+
 .prose pre {
     color: inherit;
     background-color: transparent;

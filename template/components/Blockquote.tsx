@@ -8,7 +8,7 @@ export default function Blockquote({
   author?: string;
 }) {
   return (
-    <div className="my-6 pl-4 border-l-4 border-gray-300">
+    <div className="quote my-6 pl-4 border-l-4 border-gray-300">
       <div className="flex gap-3 items-start">
         <Quote className="h-5 w-5 text-gray-400 flex-shrink-0 mt-1" />
         <div>

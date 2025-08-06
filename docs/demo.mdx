@@ -1,82 +1,2088 @@
-# Demo Page
+I started working on TRACER about a month after [GPTKitbot](/writeups/gpt-kitbot), in which I tried to make ChatGPT control an FRC Robot.
+Unfortunately I didn't have enough time before robotics ended to fix the final few bugs I had, but the project was still a great learning experience.
+So, ever since then I was planning to make an even better, more sophisticated AI-controlled robot car or tank fully from scratch.
+No high-level FRC WPILib; I instead wanted to start with arduino and build up from there.
 
-This is a demo page for MDXTheme, showcasing how to use various components and styles provided by the theme.
+## Goals
 
-## Example Code Block
+I wanted TRACER to meet the following goals:
 
-```react:/template/components/Info.tsx:
-import { Info as InfoIcon } from "lucide-react";
+- Be able to type a prompt or query and have the robot execute it. (e.g. Drive forward for a bit then turn left and drive backwards)
+- View sensor data and control the robot from a dashboard
+- Drive it with my xbox controller and use the rumble feature for haptic feedback
+- Detect and avoid obstacles.
 
-export default function Info({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="info-component rounded-lg border border-gray-200 border-t-2 border-t-blue-500 bg-white px-4 py-3 ">
-      <div className="flex items-start space-x-3">
-        <div className="mt-1 flex-shrink-0">
-          <InfoIcon className="h-5 w-5 text-blue-500 " />
-        </div>
-        <div className="flex-1 text-gray-600 font-medium text-sm">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
+## Parts List
+
+After a few weeks of planning and then getting following parts, I started working on TRACER.
+
+- [Arduino Uno R3](https://store.arduino.cc/products/arduino-uno-rev3)
+- [MPU-6050](https://www.amazon.com/Gy-521-MPU-6050-MPU6050-Sensors-Accelerometer/dp/B008BOPN40)
+- [HC-SR04 Ultrasonic Sensor](https://www.sparkfun.com/ultrasonic-distance-sensor-hc-sr04.html)
+- [HC-05 Bluetooth Module](https://www.amazon.com/HiLetgo-Wireless-Bluetooth-Transceiver-Arduino/dp/B071YJG8DR)
+- [TB6612FNG Motor Driver](https://www.sparkfun.com/sparkfun-motor-driver-dual-tb6612fng-1a.html)
+- [3-pin IR Sensor](https://www.amazon.com/Infrared-Avoidance-Transmitting-Receiving-Photoelectric/dp/B07PFCC76N?source=ps-sl-shoppingads-lpcontext&ref_=fplfs&smid=A2ZDGCOOU4F0SF&gPromoCode=cpn_us_en_pct_5_2025Q2&gQT=1&th=1)
+- [2x 18650 Li-ion Batteries](https://www.amazon.com/TOPUSSE-18650-Rechargeable-Batteries-Flashlights/dp/B0DLWDJ3SX/)
+- [Raspberry Pi 3B+](https://www.raspberrypi.com/products/raspberry-pi-3-model-b-plus/)
+- [Tank Chassis](https://www.amazon.com/Tank-Car-Chassis-Full-Metal-RaspberryPi/dp/B0BDYHVS2P/)
+- [16x2 LCD Display](https://www.amazon.com/SunFounder-Serial-Module-Display-Arduino/dp/B019K5X53O/)
+- [Screws and spacers](https://www.amazon.com/Black-Nylon-Standoff-Spacers-Screws/dp/B0F297R23T/)
+- And resistors, wires, and a breadboard.
+
+## Hardware
+
+I first started with the hardware which was a bit of a challenge since the last time I did anything with embedded was in 7th grade for a [science fair project](/writeups/raspberrypi-plant-watering-system).
+Assembling the chassis was easy, but then I had to wire the motors, sensors, and arduino.
+After a bit of trial and error, I finally figured out how to wire the TB6612FNG motor driver.
+
+![](/projects/TRACER/TB6612FNG.jpg)
+
+The motor driver was fairly simple, it can control 2 motors and has one PWM pin for each motor, `PWM A` and `PWM B`, and two direction pins for each, `AIN1`, `AIN2`, and `BIN1`, `BIN2`.
+The PWM pins control the speed of the motors and can take values from 0 to 255. In arduino this is just done with the `analogWrite` function which generates a PWM signal on the defined pin.
+
+<Warning>
+  Only certain pins on the arduino support PWM. Make sure to connect `PWMA` and
+  `PWMB` to the PWM capable pins
+</Warning>
+
+In essence, PWM works by making a specific signal that turns the pin HIGH for a certain amount of time, and then LOW for the rest of the time. The ratio of HIGH to LOW time is called the duty cycle, and it determines the average voltage output of the pin. For example, if the duty cycle is 50%, the pin will be HIGH for half the time and LOW for the other half, which results in an average voltage of 2.5V on a 5V pin. This is useful since it allows us to control the speed of the motors by changing the duty cycle of the PWM signal.
+
+The direction pins control the direction of the motors, and can be set to either HIGH or LOW.
+If both direction pins are set to LOW, the motor will stop. If one direction pin is set to HIGH and the other is set to LOW, the motor will spin in one direction, and if the other direction pin is set to HIGH and the first one is set to LOW, the motor will spin in the other direction.
+
+<Info>
+  {" "}
+  These directions depend on how the motors are wired, so you may need to reverse
+  the direction of one of the motors in your code while testing.{" "}
+</Info>
+
+The motor driver also has a `STBY` pin which must be high or connected to 5V for the motors to be enabled.
+
+The `VCC` pin is connected to 5V, and the `GND` pin is connected to ground.
+
+The final power pin is the `VM` pin which is connected to the battery.
+
+<Warning>
+  Do not connect the `VM` pin to the arduino 5V pin, as this will damage the
+  arduino. Make sure to connect it to the battery instead. With 2 18650
+  batteries at 3.7V each, the total voltage is 7.4V which is within the range of
+  the motor driver.
+</Warning>
+
+Finally, there are 4 output pins for each motor, `A01`, `A02`, `B01`, and `B02`, which are connected to the motors. You can also change the direction the motors spin by swapping the wires to A01 and A02 or B01 and B02.
+
+The code for controlling the motors is really simple:
+
+```cpp:arduino/main/main.ino:github.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L325-L370
+void handleMovement(int16_t leftSpeed, int16_t rightSpeed)
+{
+    // Values already mapped between -255 and 255
+
+    if (!motorsEnabled){
+      digitalWrite(STBY, HIGH);
+    }
+
+    if (leftSpeed > 0)
+    {
+        digitalWrite(IN1, HIGH);
+        digitalWrite(IN2, LOW);
+        analogWrite(EN1, leftSpeed);
+    }
+    else if (leftSpeed < 0)
+    {
+        digitalWrite(IN1, LOW);
+        digitalWrite(IN2, HIGH);
+        analogWrite(EN1, -leftSpeed);
+    }
+    else
+    {
+        digitalWrite(IN1, LOW);
+        digitalWrite(IN2, LOW);
+        analogWrite(EN1, 0);
+    }
+
+    if (rightSpeed > 0)
+    {
+        digitalWrite(IN3, HIGH);
+        digitalWrite(IN4, LOW);
+        analogWrite(EN2, rightSpeed);
+    }
+    else if (rightSpeed < 0)
+    {
+        digitalWrite(IN3, LOW);
+        digitalWrite(IN4, HIGH);
+        analogWrite(EN2, -rightSpeed);
+    }
+    else
+    {
+        digitalWrite(IN3, LOW);
+        digitalWrite(IN4, LOW);
+        analogWrite(EN2, 0);
+    }
 }
 ```
 
-## Example Usage of Info Component
-
-<Info>
-  This is an example of an Info component that can be used to display important
-  messages in your documentation or static site.
-</Info>
-
-## Example Warning Component
+In this code, we drive the motors using 2 values: `leftSpeed` and `rightSpeed`, which are both between -255 and 255.
 
 <Warning>
-  This is an example of a Warning component that can be used to highlight
-  warnings or important notes.
+  {" "}
+  Make sure to enable output on the pins used here in your code, otherwise the motors
+  will not work.
+</Warning>{" "}
+
+This may look confusing at first: How do we turn without a way to change the angle of the wheels like in a car? Well, this robot uses a method of steering known as **differential drive**.
+Using differential drive, we can control the speed of each motor independently to turn the robot.
+For example, if we want to turn left, we can set the left motor to a negative speed and the right motor to a positive speed. This will cause the robot to spin left. Alternatively, just setting the left speed to 0 makes the robot turn left while moving forward.
+
+In the code we then determine the direction pin values based on the signs of the speeds. Finally, we use `analogWrite` to set the PWM value for each motor, making sure to flip the sign of the speed if its negative.
+I also connected the standby pin to a digital pin for an emergency stop feature.
+
+### Sensors
+
+I wanted TRACER to have some sort of obstacle avoidance, even if it was very basic. So, I decided to use an ultrasonic sensor to measure distance to obstacles in front of the robot. I also used 2 IR sensors pointing down on the back and front of the robot to detect if the robot is about to fall off a ledge or something similar.
+
+#### Ultrasonic Sensor
+
+![](/projects/TRACER/HCSR04.jpg)
+
+The ultrasonic sensor has 4 pins, `VCC`, `GND`, `TRIG`, and `ECHO`.
+The `VCC` pin is connected to 5V, the `GND` pin is connected to ground, the `TRIG` pin is used to send out the sound wave, and the `ECHO` pin is used to receive the sound wave.
+
+When the `TRIG` pin is set to HIGH, the ultrasonic sensor will send out a sound wave and from this we can use the `ECHO` pin to measure how long it takes for the sound wave to return.
+
+This works by sending out a very high frequency sound wave and then measuring how long it takes to return. Sound waves will bounce of close enough objects, and from the total time it takes from sending to receiving the sound wave, we can calculate the distance to any objects.
+
+Sound travels at about 343 meters per second, so to calculate distance we can use the formula:
+
+<Formula block formula={"d = \\frac{(t \\cdot 343)}{2}"} />
+
+Where `d` is the distance in meters, and `t` is the time in seconds. The division by 2 is because the sound wave has to travel to the object and back, so the total time is double the distance.
+
+The ultrasonic sensor will send out a pulse when the sound wave is sent out, and then another pulse when the sound wave is received on the `ECHO` pin. In arduino we can use the `pulseIn` function to measure this interval.
+
+This works well in most cases, but there are 2 major edge cases that lead to issues:
+
+- If the object is too close, the sound wave will return while the original pulse is still being sent out, and this messes up the readings.
+- If the object is too far away, the sound wave will not return in time and there won't be any reading.
+
+This caused issues with the obstacle detection, so I had to add some extra logic to handle this.
+
+```cpp:arduino/main/main.ino:github.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L137-148
+long duration = pulseIn(ECHO, HIGH, 25000); // 25ms timeout (~4.25m max)
+
+if (duration == 0)
+{
+    distance = -1; // Indicate too far
+    return;
+} else if (duration < 100)
+{
+    distance = -2; // Indicate too close
+    return;
+}
+```
+
+I set a timeout of 25ms for the `pulseIn` function, which is about 4.25 meters. If the duration is 0, it means the object is too far away, and we return -1. If the duration is less than 100 microseconds, it means the object is too close, and we return -2.
+
+This is useful for processing the distance later on, as we can keep a history of the last 10 distances. If we get an invalid reading we can use the average of the previous readings to estimate a value, and then add that to the history.
+This is basically implementing a simple smoothing mechanism to mitigate discontinuities.
+
+```python:rpi/src/models/Robot.py:github.com/CoderN-P/TRACER/blob/main/rpi/src/models/Robot.py#L160-L167
+if distance == -1:  # too far
+    avg_distance = sum(self.distance_history) / len(self.distance_history) if self.distance_history else 300
+    return avg_distance # if the distance is too far we don't need to use haptic feedback, so we can just return the estimated distance and add it to the history
+elif distance == -2:  # too close
+    avg_distance = sum(self.distance_history) / len(self.distance_history) if self.distance_history else 0 # estimate current distance
+    low = avg_distance / self.obstacle_threshold # this is used for haptic feedback on xbox controller
+    # we don't return since later in this function we will use the estimated distance for haptic feedback
+else:
+    avg_distance = distance # if the distance is valid, we can use it directly without estimation
+    # Later on we check if the distance is less than the threshold and use haptic feedback
+
+```
+
+The code above is taken from the raspberry pi side which I will explain in depth later on.
+
+#### IR Sensors
+
+I had a few simple 3-pin IR sensors lying around, so I decided to use them to detect if the robot is about to fall off a cliff or ledge.
+The IR sensor works by emitting IR light and then measuring the amount of light that's reflected back. So the idea is to point the IR sensor straight down, if we are close to the ground we should get some light reflected back, and if we are far above the ground we should get barely any or no light reflected back.
+
+This isn't the best since the IR sensor has to be tuned based on the surface using the potentiometer on it. It also will change its readings in different lighting conditions, so it works for a rough estimation of a cliff, but not for precise measurements.
+
+![](/projects/TRACER/IR.jpg)
+
+The IR sensor has 3 pins, `VCC`, `GND`, and `OUT`. The `VCC` pin is connected to 5V, the `GND` pin is connected to ground, and the `OUT` pin is connected to any arduino pin, and can be read with `digitalRead`.
+
+The potentiometer is just the small blue knob, and I found that it was easiest to turn with a screwdriver.
+
+The code is very simple, just reading the `OUT` pin and checking if it's HIGH or LOW. If it's HIGH, it means the sensor is detecting the ground (no cliff), and if it's LOW, it means the sensor is not detecting any ground (cliff)
+
+```cpp:arduino/main/main.ino:github.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L117-L125
+uint8_t getIRFront()
+{
+    return digitalRead(IR_FRONT);
+}
+
+uint8_t getIRBack()
+{
+    return digitalRead(IR_BACK);
+}
+```
+
+Again, later on this is used for automatic stopping and haptic feedback if we encounter a cliff on any side.
+
+#### MPU-6050
+
+The MPU-6050 is a 6-axis motion tracking device that combines a 3-axis gyroscope and a 3-axis accelerometer. Since it is an I2C device, the code is a bit more complicated than the other sensors. At first, it seemed kind of confusing, but the Arduino `Wire.h` library makes reading I2C much easier than coding with bare metal (which I had to do later on for another board).
+
+![](/projects/TRACER/MPU6050.webp)
+
+The MPU-6050 also has a DMP (Digital Motion Processor) which does sensor fusion onboard to get orientation, but I didn't end up use it, or the accelerometer yet. I just have this in case I use it later for estimating relative position and pose for path following algorithms.
+
+The sensor has 4 pins, `VCC`, `GND`, `SDA`, and `SCL`. The `VCC` pin is connected to 5V, the `GND` pin is connected to ground, the `SDA` pin is connected to the arduino's I2C data pin, and the `SCL` pin is connected to the arduino's I2C clock pin. The `SDA` and `SCL` pins are what allow I2C communication.
+After a lot of research I realized that I2C communication is just specially timed pulses on the SDA pin which is synchronized by the clock pin. It's like morse code, but with a clock signal to synchronize the data. When the clock is high, the data on the SDA pin is supposed to be valid, which means it's suitable for reading. In this way, binary data can be transmitted over the I2C bus.
+
+<Info>
+  {" "}
+  The MPU-6050 has a default I2C address of `0x68`; if this doesn't work you can
+  run a scanning script to scan the I2C bus and find the address of the sensor.{" "}
+</Info>{" "}
+
+<Warning>
+  {" "}
+  Make sure to connect the `SDA` pin to the designated I2C data pin on the arduino,
+  and the `SCL` pin to the designated I2C clock pin. On the Arduino Uno, these are
+  pins `A4` and `A5` respectively. If this is done incorrectly, the sensor will not
+  be able to communicate with the arduino.
 </Warning>
 
-## Example Formula Component
+The MPU exposes a lot of different data, like temperature, acceleration in xyz, and angular velocity in xyz. The way this is read is using registers. Basically, we can read a register by first sending the register address to the sensor, then the sensor will send the data from that register back to us. There are more registers for configuring the sensor with interrupts and other modes like `FIFO` or low power mode, but for this use I only needed to read from the data registers, and just write to the power mode register to turn the sensor on.
 
-<Formula formula="E=mc^2" block={true} />
+Each data register has 1 byte of data, however the actual data for each value is 16 bits (2 bytes), so there are 2 registers for each value. One register stores the "low" byte and the other register store the "high" byte. Now the sensor could send the high byte first, or low byte first, but we can specify this to make sure we read the data correctly.
+This is known as the endianness of the data, and in this case the default is big-endian, which means the high byte is sent first and then the low byte.
 
-## Example Link Component
+To combine both bytes into a single value we basically need to concatenate them. Just like how we can concatenate strings `high + low` (if they were strings), we can concatenate bytes by shifting the high byte 8 bits to the left and then adding the low byte.
 
-[Link to MDXTheme Documentation](https://docs.neelparpia.me/mdxtheme)
+The following code reads the MPU-6050 data registers.
 
-## Example Image Component
+```cpp:arduino/main/main.ino:github.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L151-L173
+void getMPUData(int &ax, int &ay, int &az, int &gx, int &gy, int &gz, float &tempC)
+{
+    Wire.beginTransmission(MPUAddress);
+    Wire.write(0x3B); // Starting register for accelerometer data
+    Wire.endTransmission(false);
+    Wire.requestFrom(MPUAddress, 14); // Request 14 bytes (6 for accelerometer, 6 for gyroscope, 2 for temperature)
 
-![Responsive Image](https://images.unsplash.com/photo-1562725081-7afc517eca8c?q=80&w=2670&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D)
+    if (Wire.available() < 14)
+    {
+        return;
+    }
 
-## Example Heading Component
+    ax = (Wire.read() << 8) | Wire.read();
+    ay = (Wire.read() << 8) | Wire.read();
+    az = (Wire.read() << 8) | Wire.read();
 
-### Heading Level 3
+    int16_t tempRaw = (Wire.read() << 8) | Wire.read();
+    tempC = tempRaw / 340.0 + 36.53;
 
-#### Heading Level 4
+    gx = (Wire.read() << 8) | Wire.read();
+    gy = (Wire.read() << 8) | Wire.read();
+    gz = (Wire.read() << 8) | Wire.read();
+}
+```
 
-##### Heading Level 5
+For this code to work we first need to initialize wire transmission and power on the MPU.
 
-## Example List
+```cpp:arduino/main/main.ino:github.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L35-L42
+bool initMPU6050()
+{
+    Wire.beginTransmission(MPUAddress);
+    Wire.write(0x6B); // PWR_MGMT_1 register
+    Wire.write(0);    // Wake up the MPU-6050 (0 = wake up)
+    byte status = Wire.endTransmission(true);
+    return status == 0; // Return true if successful
+}
+```
 
-- Item 1
-- Item 2
-- Item 3
+#### LCD Display
 
-## Example Ordered List
+I also had a small 16x2 LCD, so I decided to use it to show some current state (e.g. "Ready", "Moving", "Stopped", etc.). Also, this could be used to allow the robot to "say" things like "Hello World!" or "I am TRACER!".
 
-1. First item
-2. Second item
-3. Third item
+![](/projects/TRACER/LCD.jpg)
 
-## Example Blockquote
+The LCD has a lot of pins, but with an I2C backpack, we can make the LCD an I2C device and just use the 4 pins from earlier. Luckily there are already libraries for this, so the code isn't as complicated as the MPU-6050.
 
-> This is an example of a blockquote. It can be used to highlight important quotes or excerpts in your documentation.
+I used the [LiquidCrystal_I2C](https://docs.arduino.cc/libraries/liquidcrystal-i2c/) library to control the LCD. The library makes it really easy to print text to the display, and it also handles the I2C communication for us.
 
-## Codespan
+<Info>
+  The LCD display has a default I2C address of `0x27`, but this can vary
+  depending on the backpack used. If this doesn't work, you can run a scanning
+  script to scan the I2C bus and find the address of the display.
+</Info>
 
-`This is an inline code snippet.`
+To set up the display we need to initialize an lcd instance with the address and the number of columns and rows. Then we can use the `init` method to initialize the display.
 
-## Inline formula
+```cpp:arduino/main/main.ino:github.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L63-L65
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Address, columns, rows
 
-The pythagorean theorem states that <Formula formula="a^2 + b^2 = c^2" />.
+void setup()
+{
+    lcd.init();
+    lcd.backlight(); // Turn on the backlight
+    lcd.setCursor(0, 0); // Set cursor to first row, first column
+    lcd.print("Ready"); // Print initial message
+}
+```
+
+#### Battery Percentage Estimation
+
+Later on in the project I noticed a slight issue with the lithium batteries. Overnight, the batteries would slowly discharge and this would lead to slower movement and less power. So I wanted to estimate the battery percentage by measuring the voltage and comparing it to the maximum voltage of the batteries.
+Since I used 2 batteries in series, the maximum voltage is 8.4V (2 _ 4.2V), and the minimum voltage is 6.0V (2 _ 3.0V).
+
+<Warning>Going below 3.0 V per battery can permanently damage them.</Warning>
+
+To measure the voltage, I used a voltage divider to step down the voltage to a range that the arduino can read. The arduino's analog pins can only read voltages between 0 and 5V, so we need to step down the voltage from 8.4V to 5V.
+I used a 10k and 3k resistor to create a voltage divider, which gives us a ratio of 3 / 13. This means that the maximum voltage we can read is 5V _ (3 / 13) = 1.15V, and the minimum voltage is 0V _ (3 / 13) = 0V. (More info on voltage dividers below in the bluetooth section)
+I also connected the battery after the voltage divider to an analog pin on the arduino.
+
+The code to read the battery voltage and get percentage just uses `analogRead`.
+
+```cpp:arduino/main/main.ino:ogithub.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L175-L185
+uint8_t getBatteryPercent()
+{
+    int raw = analogRead(BATTERY);  // 0–1023
+    float voltageAtPin = raw * (5.0 / 1023.0);
+    float batteryVoltage = voltageAtPin * 13.0 / 3.0; // because of 10k & 3k
+    float maxV = 8.4; // 2S LiPo max voltage
+    float minV = 6.0; // 2S LiPo min voltage
+
+    float percent = (batteryVoltage - minV) / (maxV - minV) * 100.0;
+    return constrain((uint8_t)percent, 0, 100);
+}
+```
+
+## The next step: Connecting the hardware side to a proper computer
+
+My initial architecture was to have the arduino act as a slave device. It would just read sensors and send sensor data to the computer, and then the computer would send commands to the arduino to control the motors or LCD.
+
+So, I first looked into using bluetooth. My plan was to connect the bluetooth module to the arduino and then connect to it from my laptop via python. Then my laptop could function as the "brain" of the robot, processing the sensor data and sending commands to the arduino.
+I bought the HC-05 bluetooth module, which is a very common bluetooth module for arduino projects. It can be used to send and receive data over bluetooth, and it has a simple serial interface. However, what I didn't realize was that the HC-05 did not support Bluetooth Low Energy (BLE). The HC-05 is pretty old, and as a result it doesn't work with ios devices which explicitly require BLE for bluetooth communication.
+After doing some research I got mixed answers on whether the HC-05 would work with a Mac or not. So I just decided to try it out and see if it works.
+
+![](/projects/TRACER/HC05.jpg)
+
+The golden zigzag line is the antenna. The power pins are of course `VCC` and `GND`, and the other pins are `TX` (transmit) and `RX` (receive) which are used for serial communication. The `EN` pin is used to enable the module, but I didn't end up using it since I just connected it to power.
+
+Since I wanted to keep the hardware serial open for debugging, I used the `SoftwareSerial` library to create a new serial port for the HC-05. This way I could still use the hardware serial for debugging and the software serial for bluetooth communication. I connected the TX and RX pins to digital pins 10 and 11 respectively, and then used the `SoftwareSerial` library to create a new serial port.
+
+<Info>
+  The GPIO pin connected to the `TX` pin of the HC-05 should be set to `INPUT`,
+  and the GPIO pin connected to the `RX` pin of the HC-05 should be set to
+  `OUTPUT`. This is because the HC-05 will send data on the `TX` pin and receive
+  data on the `RX` pin. It's just like connecting hardware serial on other
+  devices. YOu won't connect TX to TX or RX to RX, but instead TX to RX and RX
+  to TX.
+</Info>
+
+Just like I2C, serial communication is also a way to send data over a single wire. The HC-05 uses a serial interface to communicate with the arduino, which is just a way to send and receive data over a single wire. We specify a `baud_rate` which is the speed at which bits are sent (bits/second). The default is 9600 baud which is recommended for Software
+Serial; however, higher baud rates can be used with the built-in hardware serial pins (0 and 1) on the arduino.
+
+Initially I just connected the HC-05 VCC to 5V, and this worked, but there was a subtle issue. The HC-05 is rated for 5V, but the `RX` pin is only rated for 3.3 V. So I had to use a voltage divider.
+
+The formula for a voltage divider is:
+
+<Formula block formula={"V_{out} = V_{in} \\cdot \\frac{R2}{R1+R2}"} />
+
+Where `Vin` is the input voltage, `Vout` is the output voltage, and `R1` and `R2` are the resistors in the voltage divider.
+
+Since we want to step 5V down to 3.3 V, we need the ratio (R2 / (R1 + R2)) to be 3.3 / 5 = 0.66 = 2/3. So the ideal resistors should be R1 = 1 kOhm and R2 = 2 kOhm.
+However, I only had 1 kOhm and 10 kOhm resistors, so I replaced R2 with 2 1k0hm resistors in series, which gives the same ratio.
+
+With the voltage divider, I thought the bluetooth module would work, and I started writing arduino code to send sensor data.
+
+Initially I planned to send sensor data as a JSON string using the `ArduinoJson` library, but I realized that this was very inefficient. Bluetooth communication is similar to serial communication. So using a json string would require sending a lot of unnecessary data and this would increase latency, especially over bluetooth.
+Instead, I opted for a compact binary packet format.
+
+```plaintext
+
+# <B    - start byte (0xAA)
+# f     - distance (float)
+# h     - ax (int16_t)
+# h     - ay (int16_t)
+# h     - az (int16_t)
+# h     - gx (int16_t)
+# h     - gy (int16_t)
+# h     - gz (int16_t)
+# f     - tempC (float)
+# B     - ir_flags (uint8_t)
+# B     - battery percentage (uint8_t)
+# B     - checksum (uint8_t)
+
+```
+
+In this packet, there are a total of 24 bytes, which is way more efficient and compact than a JSON string. (Floats take up 4 bytes, and int16_t takes up 2 bytes)
+
+The start byte is used to indicate the start of a new packet, and the checksum is used to verify the integrity of the packet. The checksum is just the sum of all the bytes in the packet, modulo 256. This way we can detect if any bytes were corrupted during transmission.
+
+<Info>
+  The checksum is done modulo 256 so as to fit in a single byte. This is also
+  equivalent to doing `sum & 0xFF` (bitwise AND with 255).
+</Info>
+
+The IR flags are a bit different from the other data, since they are both booleans. I just set the first bit to the value from the front IR sensor, and the second bit to the value from the back IR sensor. This way we can pack both values into a single byte and then use bitmasks or bitwise operations to extract the values later on.
+
+The arduino code to create this packet is as follows:
+
+```cpp:arduino/main/main.ino:github.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L187-L244
+void sendSensorData()
+{
+
+    // Get ultrasonic data
+    float distance = lastDistance;
+
+    uint8_t ir_front = getIRFront();
+    uint8_t ir_back = getIRBack();
+    uint8_t ir_flags = (ir_front << 0) | (ir_back << 1); // bit 0 = front, bit 1 = back
+    uint8_t batteryPercent = 0;
+
+    if (motorsRunning){
+        batteryPercent = storedBatteryPercent; // Use the precomputed battery percentage if motors are on
+    } else {
+        // Get battery voltage percentage
+        if (storedBatteryPercent == -1) {
+            batteryPercent = getBatteryPercent(); // Get the battery percentage if not stored
+        } else {
+            batteryPercent = (uint8_t)(0.8*getBatteryPercent() + 0.2*storedBatteryPercent); // Smooth the battery percentage
+        }
+
+        storedBatteryPercent = batteryPercent; // Store it for future use
+    }
+
+    byte buffer[24];
+    int i = 0;
+
+    buffer[i++] = 0xAA; // Start byte
+    memcpy(&buffer[i], &distance, 4); // Store distance as float
+    i += 4; // Store distance as float
+    memcpy(&buffer[i], &ax, 2);
+    i += 2;
+    memcpy(&buffer[i], &ay, 2);
+    i += 2;
+    memcpy(&buffer[i], &az, 2);
+    i += 2;
+    memcpy(&buffer[i], &gx, 2);
+    i += 2;
+    memcpy(&buffer[i], &gy, 2);
+    i += 2;
+    memcpy(&buffer[i], &gz, 2);
+    i += 2;
+    memcpy(&buffer[i], &tempC, 4);
+    i += 4;                 // Store temperature as float
+    buffer[i++] = ir_flags; // Store IR flags
+    buffer[i++] = batteryPercent; // Store battery voltage percentage
+
+    uint8_t checksum = 0;
+    for (int j = 1; j < i; j++)
+        checksum += buffer[j];
+    buffer[i++] = checksum;
+
+    Serial.write(buffer, i); // Send the data over Serial
+
+    if (bufferSensorSending){
+        bufferSensorSending = false;
+    }
+}
+```
+
+In this code I also just read from cached data for distance, accelerometer, gyroscope, and battery data. This is to minimize the time it takes for a sensor packet to be created and sent. I noticed that when I read all values from the sensors while making the packet, data took around 50 ms to get back, while caching them and just sending the cached values took around 2-3 ms.
+The way they are cached is fairly simple, I just read the sensors at intervals and store their data in a global variable.
+
+```cpp:arduino/main/main.ino:github.com/CoderN-P/TRACER/blob/main/arduino/main/main.ino#L372-L399
+void loop()
+{
+
+    handleIncomingData(); // For incoming serial data
+
+    if (millis() - lastUltrasonicSampleTime >= 30){
+      getUltrasonicData(lastDistance);
+      lastUltrasonicSampleTime = millis();
+    }
+
+    if (millis() - lastMPUSampleTime >= 10){
+      getMPUData(ax, ay, az, gx, gy, gz, tempC);
+      lastMPUSampleTime = millis();
+    }
+
+    if (millis() - lastLCDUpdateTime >= 500){
+        // Update LCD only if the content has changed'
+       if (strncmp(lcdLine1, lastLine1, sizeof(lcdLine1)) != 0 || strncmp(lcdLine2, lastLine2, sizeof(lcdLine2)) != 0) {
+            updateLCD();
+        }
+       lastLCDUpdateTime = millis();
+    }
+
+    if (bufferSensorSending)
+    {
+        sendSensorData(); // Send sensor data AFTER moving motors and processing commands (will be explained later)
+    }
+}
+```
+
+The battery data is also cached, but in a slightly different way. The battery voltage drops sharply when the motors are running, so I only read the battery voltage when the motors are not running.
+
+Then from the python side, I could just use pyserial to read 24 bytes of data at a time when they were available. If the checksum didn't match our calculated checksum we would just discard the packet and wait for the next one.
+Using python's `struct` module, we can easily unpack the binary data into the corresponding types.
+
+```python:rpi/src/models/Robot.py
+def bytes_to_sensor_data(data):
+    fields = struct.unpack('<BfhhhhhhfBBB', data)
+    start, distance, ax, ay, az, gx, gy, gz, temp, ir_flags, battery, received_checksum = fields
+
+    # Calculate checksum (sum of all bytes except start byte and checksum byte)
+    calculated_checksum = sum(data[1:-1]) & 0xFF
+    valid = calculated_checksum == received_checksum
+
+    if not valid:
+        self._logger.error(f"Invalid checksum: calculated={calculated_checksum}, received={received_checksum}")
+        raise ValueError("Invalid checksum")
+
+    # Extract IR flags
+    ir_front = not bool(ir_flags & 0b00000001)
+    ir_back = not bool(ir_flags & 0b00000010)
+
+    return SensorData(
+        ultrasonic={
+            "distance": distance
+        },
+        imu={
+            "acceleration_x": ax/16384,  # Convert to g's
+            "acceleration_y": ay/16384,  # Convert to g's
+            "acceleration_z": az/16384,  # Convert to g's
+            "gyroscope_x": gx/131,  # Convert to degrees per second
+            "gyroscope_y": gy/131,  # Convert to degrees per second
+            "gyroscope_z": gz/131,  # Convert to degrees per second
+            "temperature": temp
+        },
+        ir_front=ir_front,
+        ir_back=ir_back,
+        battery=battery
+    )
+```
+
+### The Bluetooth Module
+
+This unpacking and processing was only figured out after a fundamental shift in the project because of one big issue: the HC-05 bluetooth module.
+
+No matter what I tried, I could not get data to be sent over bluetooth. The bluetooth module paired to my laptop but no data was being sent. I tried using the AT commands to configure the module, but it just didn't work. I tried using different baud rates, different configurations, and even different libraries, but nothing worked.
+I even tried connected the HC-05 to the hardware serial pins on the arduino, instead of using the slower SoftwareSerial.
+
+So, I instead decided to switch to a much better and resilient communication method: Wi-Fi.
+
+### Switching to Wi-Fi
+
+I had a Raspberry Pi 3B+ which I got a few years back for my [raspberrypi-plant-watering-system](/writeups/raspberrypi-plant-watering-system) project, and I decided to use it as the main controller for TRACER.
+
+Previously I had planned to make my laptop the "brain" of the robot, but now I could just use a raspberry pi connected to the arduino over usb serial.
+
+The pros of this were that Wi-Fi was full-duplex, so I could send and receive data from the raspberry pi at the same time. Also direct serial connection via USB was much faster and more reliable than bluetooth, so it made sense to use it for communication.
+
+### Building the architecture
+
+With a proper brain for the robot, I could now plan out and build the full architecture for TRACER.
+My new plan was to keep the arduino as a slave device, and keep the raspberry pi as the main brain controller that would process sensor data, run sensor fusion, or even PID and path following.
+
+Then I decided to integrate my laptop as "UI hub" for TRACER. The raspberry pi would expose a socketio server that would allow the laptop to connect and send movement/joystick commands, and also receive sensor data.
+The laptop would be a simple flask socketio server that uses pygame to get joystick data from an xbox controller, and also propagate sensor data to a sveltekit dashboard that could show data visualizations, and most importantly allow for input for AI text control.
+
+The pros of this were that the xbox controller would have no range issues since it would be connected to the laptop via bluetooth. The laptop would also have a large range of communication with the raspberry pi because of the Wi-Fi connection.
+The laptop backend could also integrate more controllers like another board for gesture control. Keyboard and mouse inputs could easily be handled by the sveltekit frontend.
+
+The raspberry pi would then have to handle serial communication with the arduino, socketio communication with the laptop, and processing of sensor data for obstacle avoidance. The first two are IO bound tasks which could block the whole code if handled synchronously, meaning we would have to use some threading or async tasks to handle them concurrently.
+
+Finally, the laptop backend would have to serve as both a socketio server and client. It would be a server for the sveltekit frontend, receiving UI events and emitting sensor data. However, it would also be a socketio client connected to the raspberry pi, sending joystick data and frontend controls to the raspberry pi, and receiving sensor data.
+
+### The final architecture
+
+![](/projects/TRACER/SoftwareArchitecture.png)
+
+Expressed in more specific language, the architecture is as follows (taken from the [repository docs](https://github.com/CoderN-P/TRACER/blob/main/docs/SoftwareArchitecture.md))
+
+#### Raspberry Pi Layer
+
+> The Raspberry Pi layer serves as the central processing unit of the system, handling higher-level logic, data processing, and communication with the web interface. It runs a Python application that processes incoming sensor data, makes decisions based on that data, and sends commands to the Arduino. It hosts a FastAPI web server that uses websockets to listen for manual input from the web dashboard and also send sensor data to be displayed.
+
+<Info>
+  The Raspberry Pi is powered by a portable anker power bank. This is the safest
+  option compared to using batteries directly
+</Info>
+
+Key Components
+
+- FastAPI Web Server: Hosts the web interface and handles incoming requests from the web dashboard.
+- Serial Thread: A dedicated thread for handling serial communication with the Arduino, ensuring that sensor data is read and commands are sent without blocking the main application.
+- Sensor Data Processing: Processes incoming sensor data from the Arduino, including ultrasonic distance, IMU data, and IR sensor flags. Uses asyncio for non-blocking operations such as sending commands and emitting sensor data to the web interface.
+- WebSocket Communication: Uses websockets to send real-time sensor data and receive manual control commands from the web interface.
+
+<Info>
+  The raspberry pi is formatted with a headless version of Raspberry Pi OS,
+  which is a lightweight version of the operating system without a graphical
+  user interface. This allows for better performance and lower resource usage,
+  as the pi is only used for running the FastAPI server and communicating with
+  the arduino.
+</Info>
+
+#### Arduino Layer
+
+> The Arduino hardware layer is responsible for interfacing with the physical components of the robot, including motors, sensors, and displays. It handles low-level operations such as reading sensor data, controlling motor speeds, and managing communication with the Raspberry Pi via USB serial. Sensor data is collected at specific intervals and sent to the raspberry Pi via a request-response mechanism. The Arduino also listens for commands from the Raspberry Pi to control motors, displays, and other hardware components.
+
+#### Web interface Layer
+
+> The web interface layer provides a user-friendly dashboard for monitoring and controlling the robot. It allows users to view real-time sensor data, control motor speeds, and trigger emergency stops. It has 2 parts, the web dashboard and the web backend.
+
+##### Web Dashboard
+
+> The web dashboard is built using SvelteKit with the following features: Real-time sensor data display, Manual control of motors, Navigation controls (forward, backward, left, right), Battery level indicator, AI natural language control (using OpenAI API), Record and playback of commands/joystick macros
+
+##### Web Backend
+
+> The web backend is built using Flask and serves the web dashboard. It handles requests from the web interface, processes them, and communicates with the Raspberry Pi via websockets.
+> It also uses pygame to handle joystick rumbling and input events for manual control.
+
+### Implementing the architecture
+
+With the architecture finally planned out, I could start implementing the different layers, building on what I had already done with the arduino.
+
+First, I had to define a set of commands that the arduino could execute and receive from the raspberry pi. We would have a command for setting the motor speeds, a command for emergency stop, and command for updating the LCD.
+
+The sensor data would instead be sent by the arduino at regular intervals without any need for a command.
+
+With this command structure, I needed to set up the binary packets for each command. Just like with the sensor packet, I would also have a start byte and checksum byte.
+
+Here are the commands (adapted from the [serial packets documentation](https://github.com/CoderN-P/TRACER/blob/main/docs/SerialPackets.md)):
+
+1. 0x01 - Motor Command
+2. 0x02 - LCD Command
+3. 0x04 - Emergency Stop
+4. 0xAA - Sensor Data Packet
+
+Then the motor command would have the following structure:
+
+```plaintext
+Byte 0: Packet Type (0x01 for motor command)
+Bytes 1-2: Left Motor Speed (int16_t) (-255 to 255 PWM value)
+Bytes 3-4: Right Motor Speed (int16_t) (-255 to 255 PWM value)
+Byte 5: Checksum (uint8_t) (simple checksum of all previous bytes)
+```
+
+The LCD command would be similar but larger since each line in the LCD can have up to 16 characters, and we would send both lines of the LCD.
+
+```plaintext
+Byte 0: Packet Type (0x02 for LCD command)
+Bytes 1-16: LCD line 1 (char array, 16 bytes, null-terminated)
+Bytes 17-32: LCD line 2 (char array, 16 bytes, null-terminated)
+Byte 33: Checksum (uint8_t) (simple checksum of all previous bytes)
+```
+
+Finally, the emergency stop command would just consist of the start byte and checksum:
+
+```plaintext
+Byte 0: Packet Type (0x04 for emergency stop)
+Byte 1: Checksum (uint8_t) (simple checksum of all previous bytes)
+```
+
+#### Sending and parsing commands
+
+On the arduino side, the process of reading from the serial port is basically the same as just connecting the arduino to a laptop.
+We just need to use the `Serial.read()` and `Serial.available()` functions to read the incoming data. Sending data just needs the `Serial.write()` function (which is the same as `Serial.print()` but for binary data).
+
+`Serial.available()` tells us how many bytes are available to read from the serial port. When this is greater than 0 we can create a buffer and read data until we reach the end of a packet.
+By checking for the start byte, we can know how long the packet is supposed to be, and then read that many bytes into the buffer.
+
+```cpp:arduino/main/main.ino
+void handleIncomingData()
+{
+    if (Serial.available() > 0)
+    {
+        static byte buf[64];
+        static size_t idx = 0;
+
+        while (Serial.available())
+        {
+            buf[idx++] = Serial.read();
+            if (idx == expected_command_length(buf[0]))
+            {
+                handleCommand(buf, idx);
+                idx = 0;
+            }
+        }
+    }
+}
+```
+
+The `expected_command_length` function just returns the length of the command based on the first byte (the packet type).
+
+```cpp:arduino/main/main.ino
+uint8_t expected_command_length(uint8_t cmd)
+{
+    if (cmd == 0x01)
+        return 6;
+    if (cmd == 0x02)
+        return 34;
+    if (cmd == 0x03)
+        return 2;
+    if (cmd == 0x04)
+        return 2;
+    return 255; // invalid
+}
+```
+
+Then, the `handleCommand` function just checks the command type and processes it accordingly.
+
+```cpp:arduino/main/main.ino
+void handleCommand(byte *buffer, size_t length)
+{
+    uint8_t cmd = buffer[0];
+
+    uint8_t checksum = 0;
+    for (size_t i = 0; i < length - 1; i++)
+    {
+        checksum += buffer[i];
+    }
+    if (checksum != buffer[length - 1])
+    {
+        // Checksum error
+        strncpy(lcdLine1, "Checksum Err", sizeof(lcdLine1));
+        lcdLine1[16] = '\0';
+
+        strncpy(lcdLine2, "Invalid Data", sizeof(lcdLine2));
+        lcdLine2[16] = '\0';
+        return;
+    }
+
+    if (cmd == 0x01 && length == 6)
+    {
+        // Command 0x01: Handle movement
+        int16_t left, right;
+        memcpy(&left, &buffer[1], 2);
+        memcpy(&right, &buffer[3], 2);
+
+        handleMovement(left, right);
+
+        if (left != 0 || right != 0){
+            motorsRunning = true;
+        } else {
+            motorsRunning = false;
+        }
+
+        char lcd_buffer[17];
+        sprintf(lcd_buffer, "L:%d R:%d", left, right);
+
+        strncpy(lcdLine1, lcd_buffer, sizeof(lcdLine1));
+        lcdLine1[16] = '\0';
+
+        strncpy(lcdLine2, "Moving", sizeof(lcdLine2));
+        lcdLine2[16] = '\0';
+
+        bufferSensorSending = true; // Set flag to send sensor data next loop
+    }
+    else if (cmd == 0x02 && length == 34)
+    {
+        // Command 0x02: Update LCD with two lines of text
+        bufferSensorSending = true; // Set flag to send sensor data next loop
+        memcpy(lcdLine1, &buffer[1], 16);
+        memcpy(lcdLine2, &buffer[17], 16);
+
+    }
+    else if (cmd == 0x03 && length == 2)
+    {
+        // Command 0x03: Request sensor data
+        bufferSensorSending = true; // Set flag to send sensor data next loop
+    } else if (cmd == 0x04 && length == 2){
+      // Command 0x04: STOP
+        motorsEnabled = false;
+        motorsRunning = false;
+        digitalWrite(STBY, LOW);
+        bufferSensorSending = true; // Send sensor data
+        strncpy(lcdLine1, "STOP COMMAND", sizeof(lcdLine1));
+        lcdLine1[16] = '\0';
+        strncpy(lcdLine2, "Motors stopped", sizeof(lcdLine2));
+        lcdLine2[16] = '\0';
+    }
+    else
+    {
+        strncpy(lcdLine1, "Invalid Cmd", sizeof(lcdLine1));
+        lcdLine1[16] = '\0';
+        strncpy(lcdLine2, "Check Serial", sizeof(lcdLine2));
+        lcdLine2[16] = '\0';
+    }
+}
+```
+
+Ignore the 0x03 command for now, which I will get into later.
+
+<Info>
+  {" "}
+  I use `strncpy` to copy the strings into a buffer rather than directly using `lcd.print`.
+  This is to only update the LCD at certain intervals so as to speed up the command
+  processing and avoid unnecessary updates. The `lcd.print` function is quite slow,
+  so we only update the LCD every 500ms and when the content has actually changed.{" "}
+</Info>
+
+##### Sending data
+
+Now that I had command and sensor data processing, I needed to implement the "write" functionality (i.e. sending commands to the arduino and sending sensor data to the raspberry pi), and actual read functionality on the raspberry pi.
+
+Sending sensor data was very simple, we just send the sensor packet at a certain interval (e.g. every 100 ms), just as how we implemented the caching of sensor data earlier.
+
+I already had the `process_data` function to unpack sensor data, so before I moved on, I needed to write code to actually read the sensor data from the arduino and process it.
+
+<Info>
+  {" "}
+  With the SoftwareSerial and bluetooth bottleneck gone, I could use much higher
+  baud rates, so I decided to use a baud rate of 115200 bits/second. This doesn't
+  sound like much (only 11.5 kB/s), but with the 24 byte sensor packet, this means
+  we can send a packet every 2 ms, which is more than enough for real-time sensor
+  data.{" "}
+</Info>
+
+I was wondering whether to just use the synchronous `pyserial` library on the raspberry pi, or use an async version like `pyserial-asyncio`. The async version looked promising wince we wanted to handle different IO tasks concurrently without blocking. So I decided to use the `pyserial-asyncio` but unfortunately I just couldn't get it to work.
+
+I tried a bunch of random fixes, but anyway async versions of popular libraries are always a pain to work with, so I just decided to use the synchronous `pyserial` library. This wasn't so bad because I could just run the serial reading in a separate thread to effectively make it non-blocking.
+The code for reading serial data is very similar to the arduino command processing code.
+
+```python:rpi/src/models/SerialManager.py
+def read_loop(self):
+    try:
+        while self.running:
+            if self.serial.in_waiting:
+                data = self.serial.read(self.serial.in_waiting)
+                self._buffer.extend(data)
+
+                while len(self._buffer) >= self._PACKET_LENGTH:
+                    start_index = self._buffer.find(bytes([self._START_BYTE]))
+                    if start_index == -1:
+                        self._logger.warning("Start byte not found, clearing buffer")
+                        self._buffer.clear()
+                        break
+                    elif start_index > 0:
+                        self._logger.warning(f"Discarding {start_index} bytes before start byte")
+                        del self._buffer[:start_index]
+
+                    if len(self._buffer) < self._PACKET_LENGTH:
+                        break
+
+                    packet = self._buffer[:self._PACKET_LENGTH]
+                    del self._buffer[:self._PACKET_LENGTH]
+
+                    self.loop.call_soon_threadsafe(
+                        lambda p=packet: asyncio.create_task(self.robot.process_sensor_data(p))
+                    )
+            else:
+                time.sleep(0.001)
+    except Exception as e:
+        self._logger.exception(f"Exception in read_loop: {e}")
+        self.running = False
+```
+
+This code is part of a bigger `SerialManager` class that also handles writing commands.
+
+```python:rpi/src/models/SerialManager.py
+def send(self, data: Command):
+    # Check if data is a string or pydantic model
+    if data.command_type == CommandType.MOTOR:
+        packet = struct.pack("<Bhh", 0x01, data.command.left_motor, data.command.right_motor)
+        checksum = sum(packet) & 0xFF
+        self.serial.write(packet + bytes([checksum]))
+    elif data.command_type == CommandType.LCD:
+        if len(data.command.line_1) > 16:
+            data.command.line_1 = data.command.line_1[:16]
+        if len(data.command.line_2) > 16:
+            data.command.line_2 = data.command.line_2[:16]
+
+        l1 = data.command.line_1.ljust(16)[:16].encode('utf-8')
+        l2 = data.command.line_2.ljust(16)[:16].encode('utf-8')
+
+        packet = struct.pack("<B16s16s", 0x02, l1, l2)
+        checksum = sum(packet) & 0xFF
+        self.serial.write(packet + bytes([checksum]))
+    elif data.command_type == CommandType.SENSOR:
+        packet = struct.pack("<B", 0x03)
+        checksum = sum(packet) & 0xFF
+        self.serial.write(packet + bytes([checksum]))
+    elif data.command_type == CommandType.STOP:
+        packet = struct.pack("<B", 0x04)
+        checksum = sum(packet) & 0xFF
+        self.serial.write(packet + bytes([checksum]))
+```
+
+<Info>
+  {" "}
+  In the `__init__` function I set `self.serial = serial.Serial(port, baudrate)`
+  to open the serial port. On a raspberry pi I found that usually the arduino shows
+  up as `/dev/ttyUSB0` but this can sometimes change, so I added a small script later
+  on to scan the serial ports and find the correct one.
+</Info>
+
+##### Major serial issue
+
+After implementing serial reading and writing from both sides, I ran into another major issue. Whenever I sent any command to the arduino, there was a chance it would just stop responding and not send any sensor data. I tried debugging this for a long time, but I just couldn't figure out what was going wrong.
+
+That was until I learned about full and half-duplex communication. When I sent the command to the arduino, there was a chance that the arduino was already sending sensor data at the same time. This would cause a collision on the serial line, and the arduino would just stop responding.
+This was a major issue because I had no way of knowing when the arduino was sending sensor data, and when it was ready to receive a command. So I had to pivot from sending sensor data at intervals to using a **request-response** mechanism.
+
+##### Request-Response Mechanism
+
+The request-response mechanism is a common pattern in client-server architectures where the client sends a request to the server and waits for a response. In our case, the arduino is the server and the raspberry pi is the client.
+This allows us to know exactly when we are waiting for a response, and using this we can avoid collisions on the serial line.
+
+So, instead of sending sensor data at intervals from the arduino, I changed the code to send a sensor request command at intervals from the raspberry pi (This is the 0x03 command I mentioned earlier).
+
+But what if we also had to send a command to the arduino? This could also be easily handled just by keeping a flag to indicate that we are waiting for a response. If the flag is true, we don't send any commands to the arduino. The flag is then reset when we receive a response. This also goes for sending the sensor request command. If we are waiting for a response, we don't send the sensor request command. Finally, whenever we do send a command, we set the flag to true.
+
+An important addition I made to the arduino code was to send sensor data no matter what command was received. Even if the command isn't a sensor query command (`0x03`), we still send back sensor data so that we can get continuous sensor updates. Picture this, if we only sent sensor data when a sensor command is received, we would get no updates while motor commands are being sent, effectively making the robot "blind" while moving. Another useful thing about this method is that each sensor response serves as an acknowledgment for the command sent, so we can be sure that the command was received and processed correctly.
+
+If we go back to the arduino `loop` function, we can see this in action:
+
+```cpp:arduino/main/main.ino
+if (bufferSensorSending)
+{
+    sendSensorData(); // Send sensor data AFTER moving motors and processing commands
+}
+```
+
+Now instead of setting `bufferSensorSetting` to true at a certain interval, we set it to true when we received a command.
+
+<Info>
+  I put this at the very end of the loop because I noticed sending sensor data
+  right after setting the motors would result in nothing being sent. I think
+  this is because the motors take some time to start moving, and the arduino is
+  busy processing the motor command, so it doesn't have time to send the sensor
+  data. So I just put it at the end of the loop to ensure that all commands are
+  fully processed before sending sensor data.
+</Info>
+
+#### The Robot Class
+
+We already have serial communication figured out between the arduino and raspberry pi, but now we need to actually request sensor data, process it, and send commands to the arduino.
+For this, I created a `Robot` class that handles communication above the serial layer, and also processes sensor data and sends them to the laptop.
+
+I ended up having the robot class taking the `SerialManager` class as a parameter, ann the `SerialManager` class taking the `Robot` class as a parameter. This is because the `Robot` class needs to send commands to the arduino, and the `SerialManager` class needs to read sensor data from the arduino and call the `process_sensor_data` method of the `Robot` class.
+
+I also made the Robot class methods fully asynchronous, so that I could use the `asyncio` library to handle concurrent tasks (e.g. querying sensor data, sending commands from the laptop, sending data). Along with this, I also used the `asyncio.Event` class to handle the request-response mechanism.
+`asyncio.Event()` is a simple synchronization primitive that blocks a coroutine (process) until the event is set. In this case, we use it to block sending any sort of commands to the arduino while we are waiting for a response. Two other important uses are for the cliff and obstacle detection. Specifically, if a cliff or obstacle is detected we unset the Event to temporarily block commands until the robot has cleared the obstacle or cliff. This is important to prevent the robot from running into a cliff or obstacle again and again while it is backing up. Also, this prevents spamming of obstacle or cliff detection (e.g. the robot is 5cm away from the wall, we trigger the obstacle detection. Without these events the robot will detect the obstacle again the next instant and again and again) .
+
+Another important primitive is the `asyncio.Lock()` method. This creates a mutex that I use to ensure only 1 command is sent at a time. Specifically, using `asyncio.Lock` ensures that only 1 process has access to the current resource at this instant. This is important since we have different processes that can send commands: the sensor request loop, the manual control from the laptop, and AI commands (which I will get into later).
+
+Finally, we also take in a `socketio` parameter to allow the robot class to emit sensor data to the laptop via socketio. This is used to send real-time sensor data to the web interface, receive manual control commands, or even send "rumble" commands to the laptop to initiate haptic feedback when obstacles or cliffs are detected.
+We set up the `Robot` class as follows:
+
+```python:rpi/src/models/Robot.py
+class Robot:
+    def __init__(self, serial_manager: SerialManager, socketio):
+        self.serial = serial_manager
+        self.last_emit_time = 0
+        self.emit_interval = 0.1  # for sending sensor data
+        self.last_rumble_time = 0
+        self.rumble_cooldown = 1  # seconds between rumbles
+        self.socketio = socketio
+        self.cliff_clear = asyncio.Event()
+        self.waiting_for_sensor = asyncio.Event()
+        self.sensor_request_interval = 0.1  # 10Hz = 0.1 seconds
+        self.sensor_request_task = None
+        self.running = False
+        self.distance_history = []  # Store last 10 distances (Simple low pass filter as discussed earlier)
+        self.sensor_count = 0  # Count of sensor data received (To discard first sensor packet as sensors are still setting up)
+        self.last_sensor_request_time = 0  # Last time sensor data was requested
+        self.obstacle_clear = asyncio.Event()
+        self.backup_time = 2  # Amount of time to back up when an obstacle is detected
+        self.obstacle_threshold = 20 # Distance threshold for obstacle detection
+        self._logger = logging.getLogger("RobotManager")
+        self.motor_lock = asyncio.Lock()
+
+        self.waiting_for_sensor.set()
+        self.obstacle_clear.set()
+        self.cliff_clear.set()
+```
+
+This sets up the basic structure of the `Robot` class, and initializes the important variables and events.
+
+Then we can initiate the sensor request loop, which is a coroutine that runs in the background and requests sensor data at regular intervals. This is done using the `asyncio.create_task()` method to run the `sensor_request_loop` coroutine in the background.
+
+```python:rpi/src/models/Robot.py
+async def _sensor_request_loop(self):
+    """Background task to request sensor data at 10Hz"""
+    await asyncio.sleep(1)  # At startup, allow time for the connection to stabilize
+    while self.running:
+        try:
+            await asyncio.wait_for(self.waiting_for_sensor.wait(), timeout=1.0)
+        except asyncio.TimeoutError:
+            self._logger.warning("Waiting for sensor data timed out, retrying...")
+            self.waiting_for_sensor.set()  # op
+
+        # Send "SENSOR" command to Arduino to request sensor data
+        sensor_request_command = Command(
+            ID="",
+            command_type=CommandType.SENSOR,
+            command=None,
+            pause_duration=0,
+            duration=0
+        )
+        self.last_sensor_request_time = time.time()
+        self.serial.send(sensor_request_command)
+        self.waiting_for_sensor.set()  # Reset waiting for sensor flag
+        await asyncio.sleep(self.sensor_request_interval)
+```
+
+#### The FastAPI server
+
+To actually connect to the raspberry pi from my laptop I would have to set up a webserver, and I chose to use FastAPI because of its simplicity and async nature. I also chose to use socketio instead of a traditional REST API because I wanted to have real-time communication between the laptop and the raspberry pi. This would allow me to send commands and receive sensor data in real-time without having to poll the server for updates.
+
+The server would listen for the following events from the laptop: `joystick_input`, `query` (AI command query), and `stop` (emergency stop command). It would also emit the following events to the laptop: `sensor_data`, `rumble`, and `active_command` (for the AI control).
+
+The server code is again pretty simple, we just set up a FastAPI app and use the `socketio` library to handle the events.
+
+```python:rpi/src/server.py
+import logging
+
+import socketio
+from fastapi import FastAPI
+import uvicorn
+
+from .models import Command
+
+sio = socketio.AsyncServer(cors_allowed_origins='*', async_mode='asgi')
+app = FastAPI()
+app = socketio.ASGIApp(sio, other_asgi_app=app)
+logger = logging.getLogger("SocketServer")
+
+def setup_routes(robot):
+    @sio.on('joystick_input')
+    async def on_joystick(sid, data):
+        await robot.handle_joystick_input(data)
+
+    @sio.on('query')
+    async def on_query(sid, data):
+        await robot.handle_query(data["query"])
+
+    @sio.on('stop')
+    async def on_stop(sid, data):
+        await robot.send_safe_command(Command.stop())
+
+    @sio.event
+    async def connect(sid, environ):
+        logger.info(f"Client connected: {sid}")
+
+
+async def run_socket_server(robot):
+    setup_routes(robot)
+    config = uvicorn.Config(app, host="0.0.0.0", port=8080)
+    server = uvicorn.Server(config)
+    await server.serve()
+```
+
+We run the server on host `0.0.0.0` to make sure that it is accessible from any other device on the network.
+
+Finally, the event listeners just call the corresponding methods in the `Robot` class to handle the joystick input, AI query, or emergency stop command.
+
+### The Robot Class Methods
+
+As you can probably already tell, the `Robot` class is the main controller for the robot. It basically integrates all data sources and handles the logic for controlling the robot.
+
+As discussed earlier about the synchronization primitives, we can now implement the methods for sending commands safely, and controlling the robot from joystick data or AI queries.
+
+First, the `send_safe_command` method uses the `asyncio.Lock()` motor_lock mutex and the `waiting_for_sensor` event to ensure that we only send one command at a time, and that we are not waiting for sensor data before sending a command.
+
+```python:rpi/src/models/Robot.py
+async def send_safe_command(self, command: Command, wait_after: float = 0):
+    async with self.motor_lock:
+        await self.waiting_for_sensor.wait()
+        self.waiting_for_sensor.clear()
+        self.serial.send(command)
+        if wait_after > 0:
+            await asyncio.sleep(wait_after)
+        self.waiting_for_sensor.set()
+```
+
+Using this method above we can implement joystick input:
+
+```python:rpi/src/models/Robot.py
+ async def handle_joystick_input(self, data):
+    """
+    Handle joystick input and send motor commands.
+    """
+
+    left_y = data.get('left_y', 0)
+    right_x = data.get('right_x', 0)
+
+    if self.cliff_clear.is_set() and self.waiting_for_sensor.is_set() and self.obstacle_clear.is_set():
+        await self.send_safe_command(Command.from_joystick(left_y, right_x))
+```
+
+<Info>
+  Notice that we check if the `cliff_clear`, `waiting_for_sensor`, and
+  `obstacle_clear` events are set before sending the command. This ensures that
+  we only send commands when the robot is not in a cliff or obstacle state, and
+  that we are ready to receive sensor data.
+</Info>
+
+#### The Command Class
+
+You may have noticed that we also have this `Command` class that seems to have methods for creating commands from joystick input or other sources. This class is also simple data structure (using [pydantic]()) that holds the command type, ID, and any additional data needed for the command.
+
+```python:rpi/src/models/Command.py
+from pydantic import BaseModel, Field
+import uuid
+from .LCDCommand import LCDCommand
+from .MotorCommand import MotorCommand
+from .CommandTypeEnum import CommandType
+
+class Command(BaseModel):
+    """
+    Represents a command to be executed by the robot.
+    """
+    ID: str = Field(description="Unique identifier for the command")
+    command_type: CommandType
+    command: LCDCommand | MotorCommand | None = Field(description="Command to be executed, can be LCDCommand or MotorCommand, or None for stop command")
+    pause_duration: int = Field(description="Pause duration in seconds after executing the command (AI Command ONLY)")
+    duration: int = Field(description="Duration in seconds for which the command should be executed (AI Command ONLY)")
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.ID = str(uuid.uuid4())
+```
+
+The other pydantic models represent different types of commands, such as `LCDCommand` and `MotorCommand`.
+
+This leads to one more question: how do we actually convert joystick input to 2 motor speeds?
+
+#### Arcade Drive
+
+There are actually quite a few different ways to do this, and there are many different ways to control a differential drive robot from a joystick. But later on we will see that we can convert different joystick mappings to 2 values: `y` and `x`.
+
+Now we need to convert this `y` and `x` to 2 motor speeds. The simplest way to do this is to use the following formula:
+
+<Formula block formula={"l = y + x"} />
+<Formula block formula={"r = y - x"} />
+
+This is known as arcade drive, and the way it works is really simple. The `y` value controls the forward and backward movement of the robot which is why we add it to both motors. The `x value controls turn, and it's important to note that on a joystick, the x and y values can range form -1 to 1. For the x-axis, left is -1, and right is +1. This is why we add x to the left motor and subtract it from the right motor. This way, when we turn left, the left motor will slow down and the right motor will speed up, causing the robot to turn left. When we turn right, the opposite happens, and the robot turns right.
+
+There's still a bit more to do after this. First, the `l` and `r` values need to be scaled to -255, and 255, and before that they need to be clamped between -1 and 1 to be properly scaled.
+
+This works pretty well for driving the robot, but soon you'll notice that even moving the joystick slightly will cause the robot to move (or not move). If the calculated motor value is too low but not 0 (usually less than 50), the voltage delivered by PWM is too low to overcome the static friction of the motors, so the robot doesn't move. To overcome this we first need to set a deadzone for the joystick. This means that if the joystick is moved less than a certain threshold, we stop the robot and don't do anything else.
+
+Finally, we have to clamp the final motor values so their magnitude is greater than our minimum (usually 50 or 60).
+
+The `Command` class implements these methods:
+
+```python:rpi/src/models/Command.py
+@staticmethod
+def apply_deadzone_and_scale(value, deadzone=0.1, min_speed=60, max_speed=255):
+    if abs(value) < deadzone:
+        return 0
+
+    sign = 1 if value > 0 else -1
+    scaled = (abs(value) - deadzone) / (1 - deadzone)
+    scaled = min(1, max(0, scaled))  # Clamp to [0, 1]
+
+    return int(sign * (min_speed + scaled*(max_speed - min_speed)))
+
+
+@classmethod
+def from_joystick(cls, left_y: float, right_x: float):
+    """
+    Calculate the differential drive values based on the controller input.
+    """
+
+
+    forward = cls.apply_deadzone_and_scale(left_y)
+    turn = cls.apply_deadzone_and_scale(right_x)
+
+    # Calculate motor values (arcade drive)
+    left_motor = min(255, max(-255, forward - turn))
+    right_motor = min(255, max(-255, forward + turn))
+
+    command = cls(
+        ID="",
+        command_type=CommandType.MOTOR,
+        command=MotorCommand(
+            left_motor=left_motor,
+            right_motor=right_motor,
+        ),
+        pause_duration=0,
+        duration=0
+    )
+
+    return command
+```
+
+### Making it "smart"
+
+Going back the `SerialManager` class, remember this line of code that runs when we receive a sensor packet from the arduino:
+
+```python:rpi/src/models/SerialManager.py
+self.loop.call_soon_threadsafe(
+    lambda p=packet: asyncio.create_task(self.robot.process_sensor_data(p))
+)
+```
+
+The `self.loop_call_soon_threadsafe` is just a way we can call something async from the synchronous serial manager context. But the real important part is calling `robot.process_sensor_data(p)`. We already have manual control of the robot taken care of with the FastAPI server and joystick calculations, but this `process_sensor_data` method is where we make the robot actually smart. This method will actually use this data to avoid obstacles, "rumble" or use haptic feedback on the xbox controller for alerts, and detect cliffs.
+
+```python:rpi/src/models/Robot.py
+async def process_sensor_data(self, data: bytes):
+    self.waiting_for_sensor.set()
+    try:
+        sensor_data = self.bytes_to_sensor_data(data)
+    except Exception as e:
+        self._logger.error(f"Error processing sensor data: {e}")
+        return
+
+    current_time = time.time()
+    sensor_data.ultrasonic.distance = await self.handle_obstacle(sensor_data, current_time)
+    self.distance_history.append(sensor_data.ultrasonic.distance)  # Store the distance for history
+
+    if len(self.distance_history) >= 10:
+        self.distance_history.pop(0)
+
+    # Check for cliff
+    await self.handle_cliff(sensor_data, current_time)
+
+    # Emit sensor data at a fixed interval
+    if current_time - self.last_emit_time >= self.emit_interval:
+        self.last_emit_time = current_time
+        await self.socketio.emit(
+            'sensor_data',
+            sensor_data.model_dump(),
+        )
+```
+
+Let's break this down step by step:
+
+1. **Waiting for Sensor Data**: We set the `waiting_for_sensor` event to indicate that we are no longer waiting for sensor data (I should have changed the terminology but basically this just says "we have received sensor data and can safely send commands now").
+   - Going back to the `send_safe_command` method we wait for this event to be set before sending any commands:
+
+```python:rpi/src/models/Robot.py
+async def send_safe_command(self, command: Command, wait_after: float = 0):
+    async with self.motor_lock:
+        await self.waiting_for_sensor.wait()
+        self.waiting_for_sensor.clear()
+        self.serial.send(command)
+        ...
+```
+
+2. **Processing Sensor Data**: We convert the bytes received from the arduino into a `SensorData` object using the `bytes_to_sensor_data` method that I talked about earlier. This method unpacks the bytes into the corresponding sensor data fields.
+3. **Handling Obstacles**: We call the `handle_obstacle` method to check if there is an obstacle in front of the robot. This method uses the ultrasonic sensor data to determine if there is an obstacle within a certain distance threshold (20 cm in this case). If an obstacle is detected, we emit a rumble event to the laptop and set the `obstacle_clear` event to false, which will block any commands from being sent until the robot has cleared the obstacle. Finally, we return the distance measurement (adjusted if invalid as explained previously) so that we can store it in our distance history and apply a low-pass filter.
+
+```python:rpi/src/models/Robot.py
+async def handle_obstacle(self, sensor_data: SensorData, current_time: float) -> float:
+    """Detect obstacles and trigger backup if needed. Returns processed distance."""
+    # sensor_data.is_obstacle_detected checks if the distance is less than the obstacle threshold
+    # So if we do not detect an obstacle, or we have just encountered an obstacle (obstacle clear is unset) then we do not need to do anything and can just return this distance value to be saved.
+    if not sensor_data.is_obstacle_detected(self.obstacle_threshold) or not self.obstacle_clear.is_set():
+        return sensor_data.ultrasonic.distance
+
+    distance = sensor_data.ultrasonic.distance
+    low = distance / self.obstacle_threshold # calculate the low frequency rumble value from how close we are to the obstacle. Closer = higher rumble frequency
+
+    if distance == -1:  # too far
+        avg_distance = sum(self.distance_history) / len(self.distance_history) if self.distance_history else 300
+        return avg_distance
+    elif distance == -2:  # too close
+        avg_distance = sum(self.distance_history) / len(self.distance_history) if self.distance_history else 0
+        low = avg_distance / self.obstacle_threshold
+    else:
+        avg_distance = distance
+
+    low = max(0.0, min(low, 1.0))
+    high = 1 - low
+
+    if current_time - self.last_rumble_time > self.rumble_cooldown:
+        await self.socketio.emit('rumble', {"low": low, "high": high, "duration": 1000})
+        self.last_rumble_time = current_time
+
+    asyncio.create_task(self.backup()) # Backup to avoid the obstacle
+    self.obstacle_clear.clear() # Clear the event to prevent further commands until the robot has cleared the obstacle
+    asyncio.create_task(self._reset_obstacle_clear()) # # Reset the obstacle clear event after a certain time to allow commands to be sent again
+
+    return avg_distance
+```
+
+Notice that we check if the `rumble_cooldown` has elapsed before sending a rumble command to prevent spamming. Again, we return the processed distance measurement as `avg_distance` and check if this is less than 20 cm to trigger the obstacle avoidance. Finally, we create a task to back up the robot and reset the `obstacle_clear` event after a certain cooldown (to prevent commands from coming in as we are backing up). This backup function just sends a motor command, then waits for a bit, and finally sends a stop command.
+
+4. **Handling Cliffs**: We call the `handle_cliff` method to check if the robot is about to fall off a cliff. This method uses the IR sensors to determine if the robot is about to fall off a cliff. If a cliff is detected, we emit a rumble event to the laptop and set the `cliff_clear` event to false, which will block any commands from being sent until the robot has cleared the cliff.
+
+```python:rpi/src/models/Robot.py
+async def handle_cliff(self, sensor_data: SensorData, current_time: float):
+    """Handle cliff detection and stop motors if cliff is detected."""
+    # If we do not detect a cliff, or we have just encountered a cliff (cliff clear is unset) then we do not need to do anything and can just return.
+    if not sensor_data.check_cliff() or not self.cliff_clear.is_set():
+        return
+
+    # Set cliff_clear to false in order to prevent further commands until the cliff is cleared
+    self.cliff_clear.clear()
+    # Backup the robot to avoid falling off the cliff (TODO: change direction based on the side that the cliff is detected)
+    asyncio.create_task(self.backup())
+    # Set a timeout to reset the cliff detection after a certain time
+    asyncio.create_task(self._reset_cliff_detected())  # Reset cliff detection after 0.5 seconds, basically halting commands
+
+    # Emit rumble event to laptop for haptic feedback
+    if current_time - self.last_rumble_time > self.rumble_cooldown:
+        await self.socketio.emit('rumble', {"low": 0.5, "high": 0.5, "duration": 1000})
+        self.last_rumble_time = current_time
+```
+
+5. **Emitting Sensor Data**: Finally, we emit the sensor data to the laptop using the `socketio.emit` method. This allows us to send real-time sensor data to the web interface for display and analysis.
+
+#### Putting it all together
+
+The `Robot` class is now setup along with the `SerialManager` class, the FastAPI server, and our pydantic models including the `Command` and `SensorData` classes. Now we need to run all of these together in a main function.
+
+```python:rpi/main.py
+import asyncio
+import logging
+from src import text_to_command
+from src import Robot, SerialManager, run_socket_server, socketio
+
+async def main():
+    port = SerialManager.find_port()
+    if not port:
+        logging.error("No serial port found. Please connect the robot.")
+        return
+    serial_manager = SerialManager(port, 115200)
+    robot = Robot(serial_manager, socketio)
+
+    loop = asyncio.get_running_loop()
+    serial_manager.start(robot, loop)  # Start background serial read thread
+
+    await run_socket_server(robot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+First, we find the serial port using the `find_port` method in the `SerialManager` class. This method scans the serial ports and returns the first one that matches the arduino's USB device name. If no port is found, we log an error and exit.
+
+Then we create an instance of the `SerialManager` class with the found port and a baud rate of 115200. We also create an instance of the `Robot` class with the `SerialManager` instance and the `socketio` instance.
+
+Next, we get the current event loop using `asyncio.get_running_loop()` and start the serial manager in a background thread using the `start` method. This method starts the serial reading loop in a separate thread so that it doesn't block the main thread.
+
+Finally, we run the FastAPI server using the `run_socket_server` function, passing in the `robot` instance to handle the events.
+
+This is the main entry point of the application, and it sets up everything we need to run on the robot side.
+
+### The Laptop "UI Hub"
+
+The raspberry pi is now fully capable of communicating with the arduino and processing sensor data, but we still need a way to control the robot from the laptop. For this, I set up a simple flask web server on my laptop that integrates with pygame to handle xbox controller input.
+
+The web server also connects as a client to the raspberry pi's FastAPI server using socketio. This allows us to send commands to the robot and receive sensor data in real-time. Then, the web server also emits the sensor data to the SvelteKit web interface which sends back manual commands (these commands from the UI are forwarded to the raspberry pi via socketio).
+
+For the web server, I define the following events just as in the FastAPI server on the raspberry pi:
+
+#### Frontend Events
+
+    - `joystick_input`: This event is emitted by the web interface when the user uses their keyboard arrows or presses buttons on the web dashboard. It is also emitted by the laptop server to the frontend when the user uses the xbox controller. The server then sends this joystick input to the raspberry pi to control the robot.
+    - `query`: This event is emitted by the web interface when the user asks a question or gives a command to the AI. The server then sends this query to the raspberry pi to process it and send back a response.
+    - `stop`: This event is emitted by the web interface when the user wants to stop the robot immediately. It is also triggered and sent to the web frontend when the user presses the `B` button on the xbox controller. The server then sends a stop command to the raspberry pi.
+    - `joystick_mode`: This event is emitted by the web interface when the user selects different joystick control modes: `2 Joystick Arcade Drive`, `1 Joystick Arcade`, `Tank Drive`, and a custom `Car mode`. This event can also be emitted by the laptop if the user sues the xbox bumper buttons to switch between joystick modes. On the laptop this changes the calculation of x and y values.
+    - `precision_mode`: Precision mode reduces the speed of the robot to 50% when enabled. This is useful for precise movements and avoiding collisions. This can be toggled in the web interface or by pressing the `y` button on the xbox controller.
+    - `start_recording`: Recording is a special feature that allows for replayable macros of joystick movements. You can start recording, move the robot in a desired path, and then stop recording. The recorded movements can then be replayed later. Recordings can be started from the web interface or by pressing `X` on the xbox controller.
+    - `stop_recording`: This event is emitted by the web interface when the user wants to stop recording the joystick movements. It is also triggered when the user presses `X` on the xbox controller while recording.
+    - `play_recording`: This event is emitted by the web interface when the user wants to play the recorded joystick movements. It is also triggered when the user presses `A` on the xbox controller while recording.
+    - Note: I did not add a `pause_recording` or `stop_playing` event yet since it wasn't fully necessary for demoing, but I will add it later on.
+
+#### Raspberry Pi Events
+
+    - `sensor_data`: This event is emitted by the raspberry pi when it receives sensor data from the arduino. The laptop server then emits this data to the web interface for display.
+    - `rumble`: This event is emitted by the raspberry pi when an obstacle or cliff is detected. The laptop server rumbles the xbox controller via pygame as specified in the data.
+    - `active_command`: This event is emitted by the raspberry pi when an AI command is being processed. The laptop server then emits this event to the web interface to display the active command.
+
+These events are all setup in the main file of the laptop server:
+
+```python:backend/main.py
+import time
+
+import requests
+from flask import Flask
+from flask_socketio import SocketIO
+import socketio
+from Controller import Controller
+import threading
+
+from GestureController import GestureController
+
+app = Flask(__name__)
+socket = SocketIO(app, cors_allowed_origins='*')
+sio_client = socketio.Client()
+gesture_controller_route = "http://192.168.4.235/sensors"
+
+
+def setup_routes(controller: Controller):
+    @socket.on('query')
+    def handle_query(data):
+        """
+        Handle a text query command to the robot.
+        """
+        sio_client.emit('query', data)
+
+    @socket.on('joystick_input')
+    def handle_ui_joystick_input(data):
+        """
+        Handle joystick input from the UI.
+        """
+        controller.handle_joystick_input(data)
+
+    @sio_client.on('rumble')
+    def handle_rumble(data):
+        controller.rumble(data['low'], data['high'], data['duration'])
+
+    @sio_client.on('sensor_data')
+    def handle_sensor_update(data):
+        socket.emit('sensor_data', data)
+
+    @sio_client.on('active_command')
+    def handle_active_command(data):
+        socket.emit('active_command', data)
+
+    @socket.on('play_recording')
+    def handle_play_recording(data):
+        """
+        Handle the play recording command.
+        """
+        controller.play_recording(data["timestamp"])
+
+    @socket.on('stop_recording')
+    def handle_stop_recording():
+        """
+        Handle the stop recording command.
+        """
+        controller.stop_recording()
+
+    @socket.on('start_recording')
+    def handle_start_recording():
+        """
+        Handle the start recording command.
+        """
+        controller.start_recording()
+
+    @socket.on('precision_mode')
+    def handle_toggle_precision_mode(data):
+        """
+        Toggle precision mode for the robot.
+        """
+        controller.toggle_precision_mode()
+
+    @socket.on('joystick_mode')
+    def handle_joystick_mode(data):
+        """
+        Handle joystick mode toggle.
+        """
+        controller.manage_state(data['mode'])
+
+    @sio_client.event
+    def connect():
+        print("Connected to RPi backend")
+
+
+def start_socket_server():
+    """
+    Start the Flask-SocketIO server.
+    """
+    socket.run(app, host='0.0.0.0', port=8080)
+
+if __name__ == "__main__":
+    # Init joystick
+
+    # Start the gesture controller sensor loop
+
+    gesture_controller = GestureController(gesture_controller_route)
+    gesture_controller.start_sensor_loop()
+
+    controller = Controller.initialize(sio_client, socket, gesture_controller)
+    setup_routes(controller)
+
+    # Connect to RPi backend
+    sio_client.connect('http://192.168.4.119:8080')
+
+    # Start socket server in a background thread
+    threading.Thread(target=start_socket_server, daemon=True).start()
+
+
+    # Main loop for joystick input (main thread = avoids macOS issues)
+
+    try:
+        while True:
+            controller.send_update()
+            time.sleep(0.05)  # 20 Hz
+    except KeyboardInterrupt:
+        print("Shutting down.")
+```
+
+#### The Controller Class
+
+Under the hood, `pygame` uses `SDL` (Simple DirectMedia Layer) to handle input from the xbox controller. The `Controller` class uses the `pygame.joystick` module to read input from the xbox controller and trigger haptic feedback.
+
+In this, we have to implement joystick macros (recordings), different joystick modes, and also rumble functionality.
+
+```python:backend/Controller.py
+class Controller:
+    def __init__(self, controller, socketio, socketio_server, gesture_controller=None):
+        self.controller = controller
+        self.socketio = socketio  # socketio client
+        self.socketio_server = socketio_server  # socketio server
+
+        # --- Feature flags ---
+        self.reset_motor = True  # Flag to reset motors if no input is detected
+        self.stop_motor = False  # Flag to stop motors if no input is detected
+        self.stopped = False  # Flag to indicate if the motors are stopped
+        self.state = ControllerState.TWO_ARCADE
+        self.precision_mode = False  # Flag to indicate if precision mode is enabled
+        self.speed = 0  # Car speed, used in CAR state
+        self.reconnecting = False  # Flag to indicate if the controller is being reconnected
+        self.recording = False  # Flag to indicate if the controller is recording
+        self.playing_recording = False  # Flag to indicate if the controller is playing a recording
+
+        # --- Cooldown flags ---
+        self.state_cooldown = False  # Cooldown to prevent rapid state switching
+        self.precision_mode_cooldown = False  # Cooldown to prevent rapid precision mode switching
+        self.recording_cooldown = False  # Cooldown to prevent rapid recording toggling
+        self.playing_recording_cooldown = False  # Cooldown to prevent rapid playback toggling
+
+        # --- Joystick history ---
+        self.joystick_history = []  # List to store joystick history for recording
+
+        # --- Gesture controller ---
+        self.gesture_controller = gesture_controller  # Optional gesture controller for accelerometer input
+```
+
+The gesture controller is from my other project where I took an old, undocumented RISC-V based board and used the onboard electronics to turn it into a gesture controller. It uses an accelerometer to detect gestures and sends them to the laptop via a simple HTTP API. The `Controller` class can use this gesture controller to control the robot in addition to the xbox controller.
+
+Before we can do anything with the xbox controller, we have to initialize it. This is done in the `initialize` method:
+
+```python:backend/Controller.py
+@classmethod
+    def initialize(cls, socketio, socketio_server, gesture_controller=None) -> 'Controller':
+        pygame.init()
+        pygame.joystick.init()
+
+        if pygame.joystick.get_count() == 0:
+            threading.Thread(cls.reconnect_controller()).start()
+
+        controller = pygame.joystick.Joystick(0)
+        controller.init()
+
+        return cls(controller, socketio, socketio_server, gesture_controller)
+```
+
+In the first code snipptet, I define cooldown flags along with our feature flags. These are used to prevent rapid state switching because pygame's API returns 1 while a button is being pressed down. If we only check that the button is 1, then we will keep switching while the button is being held. Instead, we can either give the button a cooldown (i.e. the button won't trigger any state switching for the cooldown duration after being pressed) or we can check if the last button state was 0 (not pressed) and the current state is 1 (pressed). This way we only switch states when the button is pressed down, and not when it is held down. While figuring this out I ended up implementing the cooldown based approach.
+So, we define a method called `is_button_ready` to check if a button is pressed and the cooldown has elapsed:
+
+```python:backend/Controller.py
+def is_button_ready(self, button_index, cooldown_attr, duration=0.5):
+    """
+    Helper to check if a button is pressed and its cooldown is not active.
+    Sets the cooldown and schedules its reset if pressed.
+    """
+    if getattr(self, cooldown_attr):
+        return False
+    if self.controller.get_button(button_index):
+        setattr(self, cooldown_attr, True)
+        threading.Timer(duration, self._reset_cooldown, args=(cooldown_attr,)).start()
+        return True
+    return False
+```
+
+Now that we can get input from the xbox controller buttons, we need to define some different modes for our controller. I did this with a `ControllerState` enum:
+
+```python:backend/ControllerState.py
+from enum import Enum
+
+
+class ControllerState(str, Enum):
+    ONE_ARCADE = "one_arcade" # One joystick arcade drive
+    TWO_ARCADE = "two_arcade" # Two joystick arcade drive
+    TANK = "tank" # Tank drive with two joysticks
+    CAR = "car" # Car-like drive with triggers for acceleration and braking and left joystick for steering
+    GESTURE = "gesture" # Gesture control using accelerometer data from hifive board
+```
+
+I defined 5 different modes, each with its own way of controlling the robot. The `ONE_ARCADE` mode uses the left joystick's x and y values as inputs for arcade drive while the `TWO_ARCADE` mode uses the x value from the right joystick and the y value from the left joystick. Next, the `TANK` mode uses the left joystick to control the left motor and the right joystick to control the right motor. The `CAR` mode is a bit different, it uses the right trigger as an accelerator and the left trigger as a brake, while both joysticks are used for steering. When the accelerator is pressed, the robot gains speed and maintains this speed until a few seconds after the accelerator is released (kind of like a car). Finally, the `GESTURE` mode uses the accelerometer data from the gesture controller to control the robot.
+
+To actually switch between states I added a `manage_state` function that just checks if the right or left bumpers are pressed to "scroll" through the states and update `self.state` accordingly. This function also takes a `state` parameter which is used when the user changes the state with the frontend.
+
+And to implement probably the coolest feature, haptic feedback, I used pygame's `rumble` method on the controller instance:
+
+```python:backend/Controller.py
+ def rumble(self, low, high, duration_ms):
+    self.controller.rumble(low, high, duration_ms)
+
+    # Stop after duration using a background timer
+    duration_sec = duration_ms / 1000
+    threading.Timer(duration_sec, self.controller.stop_rumble).start()
+```
+
+Finally, I needed 2 more functions before I could work on the main loop (`send_update`): one to actually read joystick input, and one to determine whether to send joystick input or not (to avoid spamming when the joystick is in the middle).
+
+The function to read joystick input just reads both joysticks and adjusts them based on the current state:
+
+```python:backend/Controller.py
+def read_input(self) -> tuple:
+    pygame.event.pump()  # Process events to update joystick state
+
+    if self.state == ControllerState.TWO_ARCADE:
+        left_y = -self.controller.get_axis(1) # Left joystick y-axis
+        right_x = -self.controller.get_axis(2) # Right joystick x-axis
+    elif self.state == ControllerState.ONE_ARCADE:
+        left_y = -self.controller.get_axis(1) # Left joystick y-axis
+        right_x = -self.controller.get_axis(0) # Left joystick x-axis
+    else:  # TANK
+        left = -self.controller.get_axis(1) # Left joystick y-axis
+        right = -self.controller.get_axis(3) # Right joystick y-axis
+
+        # Convert both values to arcade drive to be processed on the raspberry pi
+        left_y = (left + right) / 2
+        right_x = (right - left) / 2
+
+    return left_y, right_x
+```
+
+Then we only send input when the joystick has moved enough to be outside the deadzone.
+
+The frontend can also send joystick input through the `joystick_input` event, so we need to handle that as well. The `handle_joystick_input` method is called when the frontend sends joystick input, and it just directly sends the joystick data to the raspberry pi via socketio:
+
+```python:backend/Controller.py
+def handle_joystick_input(self, data):
+    """
+    Handle joystick input from the UI.
+    """
+    left_y = data.get('left_y', 0)
+    right_x = data.get('right_x', 0)
+
+    self.socketio.emit('joystick_input', {
+        "left_y": -left_y,
+        "right_x": -right_x
+    })
+```
+
+<Info>
+  I send joystick update events to the frontend so that the UI can update the
+  joystick position and display the current state of the robot. This is useful
+  for debugging and monitoring the robot's state.
+</Info>
+
+I won't go into too much detail for the recording features, but they just record the joystick input and save it to the `self.joystick_history` list with a timestamp. This is done by the `start_recording` and `stop_recording` methods which are mapped to the `X` button but also available in the frontend. Both methods send events to the frontend to update the dashboard. Finally the `play_recording` method just sends the joystick data to the raspberry pi at 10hz. When started from the frontend, it takes a timestamp to select a specific recording. When started via the `A` button, it just plays the latest recording.
+
+Finally, precision mode is toggled by the `Y` button or the frontend, and it just sets a flag that reduces the speed of the robot to 50% when enabled. This is useful for precise movements and avoiding collisions.
+
+Now, we can implement the `send_update` method which is called in the main loop to send joystick input to the raspberry pi:
+
+```python:backend/Controller.py
+def send_update(self):
+    """
+    Send the current joystick data to the specified URL.
+    """
+    # check if Button B is pressed to reset motors
+    if pygame.joystick.get_count() == 0 and not self.reconnecting:
+        self.reconnecting = True
+        threading.Thread(self.reconnect_controller()).start()
+
+
+    pygame.event.pump()  # Process events to update joystick state
+    if self.controller.get_button(1):  # Button B is at index 1
+        if self.stop_motor:
+            self.socketio.emit('stop', {})
+            self.socketio_server.emit('stop', {})
+            print("Stopping motors due to Button B press")
+            self.stop_motor = False  # Reset flag to avoid sending stop command repeatedly
+            self.stopped = True
+            self._reset_stop_motor()
+        return
+    else:
+        self.stop_motor = True
+
+    # left and right bumpers for switching states
+    pygame.event.pump()  # Process events to update joystick state
+
+    # Precision mode toggle (Y button, index 3)
+    if self.is_button_ready(3, 'precision_mode_cooldown'):
+        self.toggle_precision_mode()
+
+    # State toggle (left bumper, index 9) and (right bumper, index 10)
+    self.manage_state()
+
+    # Playback toggle (A button, index 0)
+    if self.is_button_ready(0, 'playing_recording_cooldown'):
+        self.rumble(0.5, 0.5, 500)
+        if self.playing_recording:
+            self.playing_recording = False
+        else:
+            threading.Thread(self.play_recording()).start()
+
+    # Recording toggle (X button, index 2)
+    if self.is_button_ready(2, 'recording_cooldown', duration=1):
+        self.rumble(0.5, 0.5, 500)
+        if not self.recording:
+            self.start_recording()
+        else:
+            self.stop_recording()
+
+    if self.stopped:
+        return
+
+    if self.state == ControllerState.CAR:
+        left_trigger = (self.controller.get_axis(4) + 1) / 2
+        right_trigger = (self.controller.get_axis(5) + 1) / 2
+
+        # Increase speed with left trigger (accelerator)
+        if left_trigger > 0.1:
+            self.speed += 0.05 * left_trigger
+        # Decrease speed with right trigger (brake)
+        if right_trigger > 0.1:
+            self.speed -= 0.05 * right_trigger
+
+        if left_trigger < 0.1 and right_trigger < 0.1:
+            self.speed -= 0.01  # Slow down if no trigger is pressed
+
+        # Clamp speed between -1 and 1 to allow reverse
+        self.speed = max(0, min(self.speed, 1))
+
+    if not self.should_send_update():
+        if self.reset_motor:
+            # If no significant input, reset motors
+            self.reset_motor = False
+            data = {
+                "left_y": 0,
+                "right_x": 0
+            }
+        else:
+            # If no significant input and not resetting, do nothing
+            return
+
+    else:
+        if self.state == ControllerState.CAR:
+            # In CAR state, we send the speed directly
+
+            x = -self.controller.get_axis(0)
+            y = -self.controller.get_axis(1)
+
+            magnitude = math.sqrt(x ** 2 + y ** 2)
+
+            # x and y must have 1 magnitude
+            # even if x and y are 0, 0 we still move straight since we only care about joystick direction
+            if magnitude > 0.1:
+                x /= magnitude
+                y /= magnitude
+            else:
+                x = 0
+                y = 1  # Default to forward if joystick is centered
+
+            left_y = y * self.speed
+            right_x = x * self.speed
+
+        elif self.state == ControllerState.GESTURE:
+            left_y, right_x = self.gesture_controller.get_joystick_input()
+        else:
+            left_y, right_x = self.read_input()
+
+        if self.precision_mode:
+            # Scale down the input for precision mode
+            left_y *= 0.5
+            right_x *= 0.5
+
+        data = {
+            "left_y": left_y,
+            "right_x": right_x
+        }
+
+        if self.recording:
+            self.joystick_history[-1]["commands"].append(data)
+
+        self.reset_motor = True  # Set flag to reset motors next time if no input
+
+    try:
+        self.socketio_server.emit('joystick_input', data)
+        self.socketio.emit('joystick_input', data)
+    except Exception as e:
+        raise RuntimeError(f"Failed to send controller update: {e}")
+```
+
+Just like the `Robot` class, this method reads input from the frontend, xbox controller, and gesture controller, and sends joystick data to the raspberry pi and the frontend. It also handles the different states and features like precision mode, recording, and playback.
+
+#### Frontend Dashboard
+
+<div className="w-full relative">
+  <Image
+    src="/projects/TRACER/Dashboard.png"
+    alt="TRACER Dashboard"
+    fill
+    className="object-contain"
+    sizes="(max-width: 768px) 100vw, 50vw"
+  />
+</div>
+
+I tried to make the dashboard look as modern and sleek as possible, while still being functional. The dashboard is built with SvelteKit and uses Tailwind CSS for styling. Just like the laptop and the raspberry pi, the frontend connects to the laptop backend via socketio to receive sensor data and send commands.
+
+Along with being able to control the robot with keyboard arrows, I also added a graph for the ultrasonic distance data, and a section for obstacle and cliff status. There's also an area to change controller states and start / play recordings.
+
+But by far the coolest part is the AI control.
+
+### AI Control
+
+This is the ultimate goal of the project: to be able to control the robot with natural language commands. All of the work before has built up to being able to do this.
+
+First, we must break down this problem into a series of steps. We already have a set of commands that we can send to the arduino (motor, lcd, and stop commands). We also have a way to get user input from the web dashboard. Now the goal is, how do we convert a user query into a set of commands that the robot can execute.
+
+I thought about how to do this for a while, and I realized that using LLMs with structured outputs was probably the easiest way to do this. Most LLMs nowadays can return structured JSON data which adheres to a specified schema. I just have to make an `AICommand` pydantic model that defines the schema of the JSON response. Then we can use this to get the set of commands to execute.
+
+However, it's not so simple. What if the user asks "move forward then pause for a bit and then move backward"? We also need a way to specify how long or how far a command should run. Specifying distances is only feasible with motor encoders, so I opted for duration. If we go back to the `Command` class, I added 2 extra fields: `duration` and `pause_duration`. The `duration` field specifies how long the command should run, and the `pause_duration` field specifies how long to pause before executing the next command.
+
+```python:rpi/src/models/Command.py
+class Command(BaseModel):
+    """
+    Represents a command to be executed by the robot.
+    """
+    ID: str = Field(description="Unique identifier for the command")
+    command_type: CommandType
+    command: LCDCommand | MotorCommand | None = Field(description="Command to be executed, can be LCDCommand or MotorCommand, or None for stop command")
+    pause_duration: int = Field(description="Pause duration in seconds after executing the command (AI Command ONLY)")
+    duration: int = Field(description="Duration in seconds for which the command should be executed (AI Command ONLY)")
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.ID = str(uuid.uuid4())
+```
+
+This class just specifies a command, but there are multiple types of commands that we can send (LCD, motor, stop), so we need to specify the actual command type in the `command_type` field. Then we can use the `command` field to store the actual command data. The `pause_duration` and `duration` fields are only used for AI commands, so they are not required for manual commands.
+
+The LCD Command just stores both lines of text to display:
+
+```python:rpi/src/models/LCDCommand.py
+from pydantic import BaseModel, Field
+
+
+class LCDCommand(BaseModel):
+    """
+    Represents a command to control the LCD display.
+    """
+    line_1: str = Field(description="Text to display on the first line of the LCD")
+    line_2: str = Field(description="Text to display on the second line of the LCD")
+
+
+```
+
+And the motor command just stores the left and right motor speeds:
+
+```python:rpi/src/models/MotorCommand.py
+
+from pydantic import BaseModel, Field
+
+class MotorCommand(BaseModel):
+    """
+    Represents a command to control both motors in differential drive.
+    """
+    left_motor: int = Field(ge=-255, le=255, description="Speed for the left motor, range -255 to 255")
+    right_motor: int = Field(ge=-255, le=255, description="Speed for the right motor, range -255 to 255")
+```
+
+The stop command doesnt need any data, so it doesn't need a model. We can identify it just by checking the command type in the `Command` class.
+
+<Info>
+  {" "}
+  I add descriptions to the fields so that the LLM can understand what each field
+  means. This is useful for generating the JSON schema and for the LLM to understand
+  what data it needs to return.
+</Info>
+
+Finally, we need to allow the LLM to return an array of commands, not just one. So, I created an `AICommand` class that just contains an array of `Command` objects:
+
+```python:rpi/src/models/CommandResponse.py:github.com/CoderN-P/TRACER/blob/main/rpi/src/models/CommandResponse.py
+from pydantic import BaseModel, Field
+from .Command import Command
+
+class AICommand(BaseModel):
+    """
+    Represents AI command response.
+    """
+
+    commands: list[Command] = Field(description="List of commands to be executed by the robot")
+```
+
+Now that we have the command schema, we just need to prompt the LLM so it performs better at the task. In the system prompt, I specified the role of the LLM as a "robot command interpreter" and then explained the available commands and how they should be used:
+
+````plaintext
+# Robot Command Interpreter
+
+You are a specialized AI assistant that converts natural language instructions into structured robot commands. Your job is to interpret user queries and generate a precise sequence of commands for a differential drive robot.
+
+## Command Structure
+
+Each command must follow this structure:
+1. **command_type**: The type of command (MOTOR, LCD, STOP)
+2. **command**: The specific parameters for the command type
+3. **duration**: How long to execute the command (in seconds)
+4. **pause_duration**: How long to pause after the command (in seconds)
+
+## Available Commands
+
+### MOTOR Commands
+Control the robot's movement using differential drive motors.
+- **left_motor**: Speed for left motor (-255 to 255)
+- **right_motor**: Speed for right motor (-255 to 255)
+- Positive values move forward, negative values move backward
+
+Movement guidelines:
+- Forward: Both motors positive
+- Backward: Both motors negative
+- Turn left: Right motor faster than left
+- Turn right: Left motor faster than right
+- Spin left: Left negative, right positive
+- Spin right: Left positive, right negative
+
+### LCD Commands
+Display messages on the robot's 16×2 character LCD screen.
+- **line_1**: Text for the first line (max 16 characters)
+- **line_2**: Text for the second line (max 16 characters)
+
+### STOP Command
+Stop all motors.
+
+## Output Format
+
+Your response must be a valid JSON object with a "commands" array containing the sequence of commands to execute:
+
+```json
+{
+  "commands": [
+    {
+      "command_type": "MOTOR",
+      "command": {
+        "left_motor": 255,
+        "right_motor": 255
+      },
+      "duration": 2,
+      "pause_duration": 0
+    },
+    {
+      "command_type": "LCD",
+      "command": {
+        "line_1": "Hello!",
+        "line_2": "I'm a robot"
+      },
+      "duration": 3,
+      "pause_duration": 0
+    }
+  ]
+}
+````
+
+Finally, we need to implement the `text_to_command` function that takes a user query and returns a list of commands. For this, I decided to use the OpenAI API with the `gpt-4.1-nano` model, which was the cheapest.
+
+```python:rpi/src/ai/get_commands.py
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
+load_dotenv()
+from ..models.CommandResponse import AICommand
+
+
+client = AsyncOpenAI()
+
+async def text_to_command(query: str, path="src/ai/PROMPT.txt") -> AICommand:
+    with open(path, 'r') as prompt_file:
+        system_prompt = prompt_file.read()
+
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt,
+        },
+        {
+            "role": "user",
+            "content": query
+        }
+    ]
+
+    response = await client.responses.parse(
+        model="gpt-4.1-nano",
+        input=messages,
+        temperature=1,
+        top_p=1,
+        max_output_tokens=500,
+        text_format=AICommand
+    )
+
+    return response.output_parsed
+```
+
+<Info>
+  I set the max output tokens to 500, which is more than enough for the commands
+  we need to generate. The `temperature` and `top_p` parameters control the
+  randomness of the output, and I set them to 1 to allow for more creative
+  responses.
+</Info>
+
+With the command generation complete, I just needed to get user input from the frontend and send it to the `text_to_command` function.
+
+When a query is submitted, we send a socketio event to the laptop backend, which then sends it to the raspberry pi via socketio. The raspberry pi then calls the `handle_query` method of the `Robot` class, which uses this `text_to_command` function to convert the query into a list of commands.
+
+```python:rpi/src/models/Robot.py:github.com/CoderN-P/TRACER/blob/main/rpi/src/models/Robot.py#L261-L277
+async def handle_query(self, query):
+    await self.send_safe_command(
+        Command(
+            ID="",
+            command_type=CommandType.LCD,
+            command=LCDCommand(
+                line_1="Thinking...",
+                line_2=""
+            ),
+            pause_duration=0,
+            duration=0
+        )
+    )
+
+    commands = await text_to_command(query)
+    command_task = asyncio.create_task(self._run_command_sequence(commands))
+    return command_task
+```
+
+As a nice touch, I made it so that while we are generating the commands, the robot displays "Thinking..." on the LCD screen.
+
+But now we actually have to execute the commands, which is where the `_run_command_sequence` method comes in.
+
+<Info>
+  Notice that I run the command sequence in a task. This prevents it from
+  blocking any other process that sends motor commands, and this allows the
+  obstacle avoidance and manual control to be active even while the AI commands
+  are executing.
+</Info>
+
+```python:rpi/src/models/Robot.py:github.com/CoderN-P/TRACER/blob/main/rpi/src/models/Robot.py#L239-L258
+async def _run_command_sequence(self, commands):
+    """Run a sequence of commands."""
+    try:
+        for command in commands.commands:
+            await self.socketio.emit('active_command', command.model_dump())
+            await self.send_safe_command(command, wait_after=command.duration)
+
+            if command.pause_duration and command.command_type == CommandType.MOTOR:
+                await self.send_safe_command(Command.stop(), wait_after=command.pause_duration)
+
+        await self.send_safe_command(Command.stop())  # Ensure we stop the robot after the command sequence
+        await self.socketio.emit('active_command', {
+            "ID": ""
+        })  # Clear active command
+    except Exception as e:
+        self._logger.error(f"Error running command sequence: {e}")
+        await self.socketio.emit('active_command', {
+            "ID": "",
+            "error": str(e)
+        })
+```
+
+In this function, I just iterate over the commands and then send each one and pause for the command's duration. I also emit an "active_command" event which just sends the command to the laptop and frontend. If the command does have a pause duration, we also pause for that amount. Once all commands have been sent, we stop the robot and send an empty "active_command" event to clear the active command on the frontend.
+
+Sending the "active_command" event is really useful since it allows the frontend to display the current command being executed. This creates the reelly cool effect of commands loading in as the robot is "thinking."
+
+## Demos
+
+## Conclusion
+
+This project took about 3 weeks to complete excluding the planning time before. It was a lot of fun and also challenging to implement, and i learned a lot about robotics, binary, communication protocols, hardware, and AI. This project also led me on another project right after where I took an old, unused, undocumented RISC-V board and turned it into a gesture controller using the onboard accelerometer. This project, in my opinion, was even harder and more challenging, but just as rewarding. You can check it out here: [Gesture Controller](/writeups/risc-v-gesture-controller).

@@ -1,16 +1,20 @@
 'use client';
 
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function CodeBlockClient({
   code,
   showLines,
   onToggleLines,
+  editorRef,
+  linesRef,
 }: {
   code: string;
   showLines: boolean;
   onToggleLines: () => void;
+  editorRef: React.RefObject<HTMLPreElement>;
+  linesRef: React.RefObject<HTMLDivElement>;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -24,20 +28,29 @@ export default function CodeBlockClient({
     }
   };
 
+  useEffect(() => {
+    const codeEl = editorRef.current;
+    const linesEl = linesRef.current;
+
+    if (!codeEl || !linesEl) return;
+
+    const handleScroll = () => {
+      linesEl.scrollTop = codeEl.scrollTop;
+    };
+
+    codeEl.addEventListener("scroll", handleScroll);
+    return () => codeEl.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
-    <div className="flex gap-2 items-center">
-      <button
-        aria-label="Toggle line numbers"
-        className="border border-slate-200 rounded-md px-2 py-1 text-sm"
-        onClick={onToggleLines}
-      >
-        {showLines && <Check className="text-green-500 w-4 h-4 mr-1 inline" />} Lines
-      </button>
-      <button onClick={copyToClipboard} aria-label="Copy code">
-        <Copy
-          className={`w-4 h-4 ${copied ? "text-green-500" : "text-slate-600 hover:text-slate-500"}`}
-        />
-      </button>
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2 items-center">
+        <button onClick={copyToClipboard} aria-label="Copy code">
+          <Copy
+            className={`w-4 h-4 ${copied ? "text-green-500" : "text-slate-600 hover:text-slate-500"}`}
+          />
+        </button>
+      </div>
     </div>
   );
 }

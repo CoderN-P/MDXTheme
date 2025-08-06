@@ -25,7 +25,7 @@ export default function Link(props: Props) {
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:underline decoration-0 hover:decoration-2 transition-all hover:text-blue-500"
+            className="text-blue-600 hover:underline decoration-0 hover:decoration-2 font-normal transition-all hover:text-blue-500"
             {...rest}
         >
             {children}

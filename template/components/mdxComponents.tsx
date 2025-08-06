@@ -45,17 +45,18 @@ export const components = {
         <Code {...props} />
     ),
     p: (props: CustomPProps) => (
-        <p className="text-lg prose leading-7 font-medium font-inter" {...props} />
+        <p className="text-lg prose leading-7  font-inter" {...props} />
     ),
     ol: (props: CustomOlProps) => (
-        <ol className="prose text-lg font-medium leading-7 list-decimal ml-4 font-inter" {...props} />
+        <ol className="prose text-lg leading-7 list-decimal ml-8 font-inter" {...props} />
     ),
     ul: (props: CustomUlProps) => (
-        <ul className="prose text-lg font-medium leading-7 list-disc ml-4 font-inter" {...props} />
+        <ul className="prose text-lg leading-7 list-disc ml-8 font-inter" {...props} />
     ),
     a: Link,
     blockquote: Blockquote,
     Info,
     Warning,
     Formula,
+    Image,
 }

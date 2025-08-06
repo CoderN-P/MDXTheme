@@ -7,7 +7,7 @@ export default function Info({ children }: { children: React.ReactNode }) {
         <div className="mt-1 flex-shrink-0">
           <InfoIcon className="h-5 w-5 text-blue-500 " />
         </div>
-        <div className="flex-1 text-gray-600 font-medium text-sm">
+        <div className="flex-1 text-gray-600 text-sm">
           {children}
         </div>
       </div>

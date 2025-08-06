@@ -1,10 +1,72 @@
+/* =========================================
+   Improved spacing for headings, formulas, and code blocks (edge cases)
+   ========================================= */
+
+/* Heading followed by formula gets slightly reduced spacing */
+.mdx-content:not(pre):not(.code-block):not(code) h1 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + .formula-component {
+  margin-top: 1.25rem !important; /* 20px */
+}
+
+/* Heading followed by code block */
+.mdx-content:not(pre):not(.code-block):not(code) h1 + .code-block,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + .code-block,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + .code-block,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + .code-block,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + .code-block,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + .code-block {
+  margin-top: 1.25rem !important; /* 20px */
+}
+
+/* Formula followed by paragraph */
+.mdx-content .formula-component + p {
+  margin-top: 1.25rem !important; /* 20px */
+}
+
+/* Code block followed by heading */
+.mdx-content .code-block + h1,
+.mdx-content .code-block + h2,
+.mdx-content .code-block + h3,
+.mdx-content .code-block + h4,
+.mdx-content .code-block + h5,
+.mdx-content .code-block + h6 {
+  margin-top: 2rem !important; /* 32px */
+}
+
+/* Formula followed by heading */
+.mdx-content .formula-component + h1,
+.mdx-content .formula-component + h2,
+.mdx-content .formula-component + h3,
+.mdx-content .formula-component + h4,
+.mdx-content .formula-component + h5,
+.mdx-content .formula-component + h6 {
+  margin-top: 2rem !important; /* 32px */
+}
+
+/* Consecutive formulas */
+.mdx-content .formula-component + .formula-component {
+  margin-top: 1.25rem !important; /* 20px */
+}
+
+/* Formula followed by code block */
+.mdx-content .formula-component + .code-block {
+  margin-top: 1.5rem !important; /* 24px */
+}
+
+/* Code block followed by formula */
+.mdx-content .code-block + .formula-component {
+  margin-top: 1.5rem !important; /* 24px */
+}
 /* Layout container */
 .mdx-layout {
   max-width: 800px;
   margin: 0 auto;
   padding: 2rem 1rem;
 }
-
 
 
 .prose code::before {
@@ -39,87 +101,81 @@ ol {
    MDX CONTENT SPACING SYSTEM
    =========================== */
 
-/* Base spacing reset - remove all default margins */
-.mdx-content > * {
+/* NOTE: Headings, paragraphs, and other block elements skip spacing when inside code blocks */
+
+/* Base spacing reset - remove all default margins, but skip inside code blocks */
+.mdx-content > *:not(pre):not(.code-block):not(code) {
   margin: 0;
 }
 
 /* First element should have no top margin */
-.mdx-content > *:first-child {
+.mdx-content > *:not(pre):not(.code-block):not(code):first-child {
   margin-top: 0 !important;
 }
 
 /* Headings - larger top margin, smaller bottom via next element */
-.mdx-content h1 {
-  margin-top: 4rem !important; /* 64px */
-  margin-bottom: 0 !important;
+.mdx-content:not(pre):not(.code-block):not(code) h1 {
+  margin-block: 4rem 0 !important; /* 64px 0 */
 }
-
-.mdx-content h1:first-child {
+.mdx-content:not(pre):not(.code-block):not(code) h1:first-child {
   margin-top: 0 !important;
 }
-
-.mdx-content h2 {
-  margin-top: 3rem !important; /* 48px */
-  margin-bottom: 0 !important;
+.mdx-content:not(pre):not(.code-block):not(code) h2 {
+  margin-block: 3rem 0 !important; /* 48px 0 */
+}
+.mdx-content:not(pre):not(.code-block):not(code) h3 {
+  margin-block: 2.5rem 0 !important; /* 40px 0 */
+}
+.mdx-content:not(pre):not(.code-block):not(code) h4 {
+  margin-block: 2rem 0 !important; /* 32px 0 */
+}
+.mdx-content:not(pre):not(.code-block):not(code) h5,
+.mdx-content:not(pre):not(.code-block):not(code) h6 {
+  margin-block: 1.5rem 0 !important; /* 24px 0 */
 }
 
-.mdx-content h3 {
-  margin-top: 2.5rem !important; /* 40px */
-  margin-bottom: 0 !important;
-}
 
-.mdx-content h4 {
-  margin-top: 2rem !important; /* 32px */
-  margin-bottom: 0 !important;
-}
-
-.mdx-content h5, .mdx-content h6 {
-  margin-top: 1.5rem !important; /* 24px */
-  margin-bottom: 0 !important;
-}
-
-/* Paragraphs - standard spacing */
-.mdx-content p {
-  margin-top: 1.5rem !important; /* 24px */
-  margin-bottom: 0 !important;
-}
 
 /* First paragraph after heading gets reduced spacing */
-.mdx-content h1 + p,
-.mdx-content h2 + p,
-.mdx-content h3 + p,
-.mdx-content h4 + p,
-.mdx-content h5 + p,
-.mdx-content h6 + p {
+.mdx-content:not(pre):not(.code-block):not(code) h1 + p,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + p,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + p,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + p,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + p,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + p {
   margin-top: 1rem !important; /* 16px */
 }
 
 /* Lists */
-.mdx-content ul,
-.mdx-content ol {
-  margin-top: 1.5rem !important; /* 24px */
-  margin-bottom: 0 !important;
+.mdx-content:not(pre):not(.code-block):not(code) ul,
+.mdx-content:not(pre):not(.code-block):not(code) ol {
+  margin-block: 1.5rem 0 !important; /* 24px 0 */
+}
+
+/* info and warning component p child has text-sm */
+.info-component p,
+.warning-component p {
+      font-size: 0.875rem !important; /* 14px */
+      line-height: calc(1.25/0.875) !important; /* 1.4285714285714286 */
 }
 
 /* First list after heading gets reduced spacing */
-.mdx-content h1 + ul,
-.mdx-content h1 + ol,
-.mdx-content h2 + ul,
-.mdx-content h2 + ol,
-.mdx-content h3 + ul,
-.mdx-content h3 + ol,
-.mdx-content h4 + ul,
-.mdx-content h4 + ol,
-.mdx-content h5 + ul,
-.mdx-content h5 + ol,
-.mdx-content h6 + ul,
-.mdx-content h6 + ol {
+.mdx-content:not(pre):not(.code-block):not(code) h1 + ul,
+.mdx-content:not(pre):not(.code-block):not(code) h1 + ol,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + ul,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + ol,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + ul,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + ol,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + ul,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + ol,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + ul,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + ol,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + ul,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + ol {
   margin-top: 1rem !important; /* 16px */
 }
 
 /* Code blocks - need more space */
-
 .mdx-content .code-block {
   margin-top: 2rem !important; /* 32px */
   margin-bottom: 0 !important;
@@ -136,69 +192,79 @@ ol {
 }
 
 /* Blockquotes */
-.mdx-content blockquote {
-  margin-top: 2rem !important; /* 32px */
-  margin-bottom: 0 !important;
+.mdx-content:not(pre):not(.code-block):not(code) .quote {
+  margin-block: 2rem 0 !important; /* 32px 0 */
 }
 
 /* Blockquote after heading gets reduced spacing */
-.mdx-content h1 + blockquote,
-.mdx-content h2 + blockquote,
-.mdx-content h3 + blockquote,
-.mdx-content h4 + blockquote,
-.mdx-content h5 + blockquote,
-.mdx-content h6 + blockquote {
+.mdx-content:not(pre):not(.code-block):not(code) h1 + .quote,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + .quote,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + .quote,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + .quote,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + .quote,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + .quote {
   margin-top: 1.25rem !important; /* 20px */
 }
 
 /* Image after heading gets reduced spacing */
-.mdx-content h1 + img,
-.mdx-content h2 + img,
-.mdx-content h3 + img,
-.mdx-content h4 + img,
-.mdx-content h5 + img,
-.mdx-content h6 + img {
+.mdx-content:not(pre):not(.code-block):not(code) h1 + img,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + img,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + img,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + img,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + img,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + img {
   margin-top: 1.25rem !important; /* 20px */
 }
 
 /* Special components (Info, Warning, etc.) */
-.mdx-content .info-component,
-.mdx-content .warning-component,
-.mdx-content .formula-component {
-  margin-top: 2rem !important; /* 32px */
+.mdx-content:not(pre):not(.code-block):not(code) .formula-component {
+  margin-block: 2rem 0 !important; /* 32px 0 */
+}
+
+/* Remove top and bottom margins from paragraphs inside info, warning, and code block components */
+.info-component p,
+.warning-component p,
+.code-block p {
+  margin-top: 0 !important;
   margin-bottom: 0 !important;
+  margin-block: 0 !important;
+}
+/* Remove top margin from first paragraph inside info/warning components */
+.info-component p,
+.warning-component p {
+  margin-top: 0 !important;
 }
 
 /* Special components after heading get reduced spacing */
-.mdx-content h1 + .info-component,
-.mdx-content h1 + .warning-component,
-.mdx-content h1 + .formula-component,
-.mdx-content h2 + .info-component,
-.mdx-content h2 + .warning-component,
-.mdx-content h2 + .formula-component,
-.mdx-content h3 + .info-component,
-.mdx-content h3 + .warning-component,
-.mdx-content h3 + .formula-component,
-.mdx-content h4 + .info-component,
-.mdx-content h4 + .warning-component,
-.mdx-content h4 + .formula-component,
-.mdx-content h5 + .info-component,
-.mdx-content h5 + .warning-component,
-.mdx-content h5 + .formula-component,
-.mdx-content h6 + .info-component,
-.mdx-content h6 + .warning-component,
-.mdx-content h6 + .formula-component {
+.mdx-content:not(pre):not(.code-block):not(code) h1 + .info-component,
+.mdx-content:not(pre):not(.code-block):not(code) h1 + .warning-component,
+.mdx-content:not(pre):not(.code-block):not(code) h1 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + .info-component,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + .warning-component,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + .info-component,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + .warning-component,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + .info-component,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + .warning-component,
+.mdx-content:not(pre):not(.code-block):not(code) h4 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + .info-component,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + .warning-component,
+.mdx-content:not(pre):not(.code-block):not(code) h5 + .formula-component,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + .info-component,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + .warning-component,
+.mdx-content:not(pre):not(.code-block):not(code) h6 + .formula-component {
   margin-top: 1.25rem !important; /* 20px */
 }
 
 /* Tighter spacing between related elements */
-.mdx-content p + ul,
-.mdx-content p + ol {
+.mdx-content:not(pre):not(.code-block):not(code) p + ul,
+.mdx-content:not(pre):not(.code-block):not(code) p + ol {
   margin-top: 0.75rem !important; /* 12px */
 }
 
-.mdx-content ul + p,
-.mdx-content ol + p {
+.mdx-content:not(pre):not(.code-block):not(code) ul + p,
+.mdx-content:not(pre):not(.code-block):not(code) ol + p {
   margin-top: 1rem !important; /* 16px */
 }
 
@@ -208,18 +274,47 @@ ol {
 }
 
 /* Paragraph followed by code block gets slightly more space */
-.mdx-content p + .code-block {
+.mdx-content:not(pre):not(.code-block):not(code) p + .code-block {
   margin-top: 1.75rem !important; /* 28px */
 }
 
 /* Consecutive headings should have reduced spacing */
-.mdx-content h1 + h2,
-.mdx-content h1 + h3,
-.mdx-content h1 + h4,
-.mdx-content h2 + h3,
-.mdx-content h2 + h4,
-.mdx-content h3 + h4 {
+.mdx-content:not(pre):not(.code-block):not(code) h1 + h2,
+.mdx-content:not(pre):not(.code-block):not(code) h1 + h3,
+.mdx-content:not(pre):not(.code-block):not(code) h1 + h4,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + h3,
+.mdx-content:not(pre):not(.code-block):not(code) h2 + h4,
+.mdx-content:not(pre):not(.code-block):not(code) h3 + h4 {
   margin-top: 2rem !important; /* 32px */
+}
+
+/* ===========================
+   Images and blockquotes spacing
+   =========================== */
+
+/* Image followed by paragraph */
+.mdx-content img + p {
+  margin-top: 1.25rem !important; /* 20px */
+}
+
+/* Image followed by heading */
+.mdx-content img + h1,
+.mdx-content img + h2,
+.mdx-content img + h3,
+.mdx-content img + h4,
+.mdx-content img + h5,
+.mdx-content img + h6 {
+  margin-top: 2rem !important; /* 32px */
+}
+
+/* Image followed by blockquote */
+.mdx-content img + .quote {
+  margin-top: 1.5rem !important; /* 24px */
+}
+
+/* Blockquote followed by image */
+.mdx-content .quote + img {
+  margin-top: 1.5rem !important; /* 24px */
 }
 
 /* ===========================
